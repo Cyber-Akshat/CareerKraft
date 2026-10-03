@@ -12,7 +12,9 @@ const prefersReducedMotion = window.matchMedia(
 
 const lenis = new Lenis({
   smoothWheel: !prefersReducedMotion,
-  smoothTouch: false
+  smoothTouch: false,
+  lerp: 0.18,
+  wheelMultiplier: 1.1
 });
 
 lenis.on(
@@ -333,7 +335,7 @@ gsap.to(
 
       end: "bottom top",
 
-      scrub: 1.2
+      scrub: 0.2
 
     }
 
@@ -359,7 +361,7 @@ gsap.to(
 
       end: "bottom top",
 
-      scrub: 1.2
+      scrub: 0.2
 
     }
 
@@ -378,7 +380,27 @@ const navbar =
   );
 
 
-let previousScroll = 0;
+const moveNavbar =
+  gsap.quickTo(
+    navbar,
+    "y",
+    {
+      duration: 0.24,
+      ease: "power2.out"
+    }
+  );
+
+
+let previousScroll =
+  window.scrollY;
+
+
+let navbarHidden =
+  false;
+
+
+let navbarScrolled =
+  false;
 
 
 window.addEventListener(
@@ -389,66 +411,37 @@ window.addEventListener(
       window.scrollY;
 
 
-    if (
-      currentScroll > 80
-    ) {
+    const isScrolled =
+      currentScroll > 80;
 
-      navbar.style.background =
-        "rgba(8, 3, 14, 0.88)";
-
-
-      navbar.style.borderColor =
-        "rgba(205, 169, 255, 0.20)";
-
-    }
-
-    else {
-
-      navbar.style.background =
-        "rgba(8, 3, 14, 0.58)";
-
-
-      navbar.style.borderColor =
-        "rgba(205, 169, 255, 0.12)";
-
-    }
-
-
-    if (
-      currentScroll >
-      previousScroll &&
-      currentScroll > 500
-    ) {
-
-      gsap.to(
-        navbar,
-        {
-          y: -110,
-          duration: 0.4,
-          ease: "power3.out"
-        }
+    if (isScrolled !== navbarScrolled) {
+      navbar.classList.toggle(
+        "is-scrolled",
+        isScrolled
       );
-
+      navbarScrolled = isScrolled;
     }
 
-    else {
+    if (currentScroll <= 500) {
+      if (navbarHidden) {
+        moveNavbar(0);
+        navbarHidden = false;
+      }
+    } else if (Math.abs(currentScroll - previousScroll) > 4) {
+      const shouldHide =
+        currentScroll > previousScroll;
 
-      gsap.to(
-        navbar,
-        {
-          y: 0,
-          duration: 0.4,
-          ease: "power3.out"
-        }
-      );
-
+      if (shouldHide !== navbarHidden) {
+        moveNavbar(shouldHide ? -110 : 0);
+        navbarHidden = shouldHide;
+      }
     }
-
 
     previousScroll =
       currentScroll;
 
-  }
+  },
+  { passive: true }
 );
 
 
@@ -475,29 +468,32 @@ if (
   cursorDot
 ) {
 
+  const moveCursorX =
+    gsap.quickTo(cursor, "x", {
+      duration: 0.18,
+      ease: "power3.out"
+    });
+
+  const moveCursorY =
+    gsap.quickTo(cursor, "y", {
+      duration: 0.18,
+      ease: "power3.out"
+    });
+
+  const setCursorDotX =
+    gsap.quickSetter(cursorDot, "x", "px");
+
+  const setCursorDotY =
+    gsap.quickSetter(cursorDot, "y", "px");
+
   window.addEventListener(
     "mousemove",
     (event) => {
 
-      gsap.to(
-        cursor,
-        {
-          x: event.clientX,
-          y: event.clientY,
-          duration: 0.3,
-          ease: "power3.out"
-        }
-      );
-
-
-      gsap.to(
-        cursorDot,
-        {
-          x: event.clientX,
-          y: event.clientY,
-          duration: 0.05
-        }
-      );
+      moveCursorX(event.clientX);
+      moveCursorY(event.clientY);
+      setCursorDotX(event.clientX);
+      setCursorDotY(event.clientY);
 
     }
   );
@@ -569,6 +565,18 @@ const magneticElements =
 magneticElements.forEach(
   (element) => {
 
+    const moveX =
+      gsap.quickTo(element, "x", {
+        duration: 0.2,
+        ease: "power2.out"
+      });
+
+    const moveY =
+      gsap.quickTo(element, "y", {
+        duration: 0.2,
+        ease: "power2.out"
+      });
+
     element.addEventListener(
       "mousemove",
       (event) => {
@@ -590,15 +598,8 @@ magneticElements.forEach(
           rect.height / 2;
 
 
-        gsap.to(
-          element,
-          {
-            x: x * 0.18,
-            y: y * 0.18,
-            duration: 0.3,
-            ease: "power2.out"
-          }
-        );
+        moveX(x * 0.18);
+        moveY(y * 0.18);
 
       }
     );
@@ -608,15 +609,8 @@ magneticElements.forEach(
       "mouseleave",
       () => {
 
-        gsap.to(
-          element,
-          {
-            x: 0,
-            y: 0,
-            duration: 0.5,
-            ease: "elastic.out(1, 0.4)"
-          }
-        );
+        moveX(0);
+        moveY(0);
 
       }
     );
@@ -1489,27 +1483,28 @@ gsap.from(
 );
 
 
-gsap.to(
-  ".scanner-line",
-  {
+const scannerLine =
+  document.querySelector(".scanner-line");
 
-    top:
-      "calc(100% - 70px)",
+const evidenceCard =
+  scannerLine?.parentElement;
 
-    duration:
-      2,
-
-    ease:
-      "power1.inOut",
-
-    repeat:
-      -1,
-
-    yoyo:
-      true
-
-  }
-);
+if (!prefersReducedMotion && scannerLine && evidenceCard) {
+  gsap.to(
+    scannerLine,
+    {
+      y: () =>
+        evidenceCard.clientHeight -
+        scannerLine.offsetTop -
+        scannerLine.offsetHeight -
+        70,
+      duration: 2,
+      ease: "power1.inOut",
+      repeat: -1,
+      yoyo: true
+    }
+  );
+}
 
 
 gsap.from(
@@ -1638,6 +1633,22 @@ featurePanels.forEach(
 featurePanels.forEach(
   (panel) => {
 
+    gsap.set(panel, {
+      transformPerspective: 900
+    });
+
+    const setRotateX =
+      gsap.quickTo(panel, "rotateX", {
+        duration: 0.2,
+        ease: "power2.out"
+      });
+
+    const setRotateY =
+      gsap.quickTo(panel, "rotateY", {
+        duration: 0.2,
+        ease: "power2.out"
+      });
+
     panel.addEventListener(
       "mousemove",
       (event) => {
@@ -1656,41 +1667,21 @@ featurePanels.forEach(
           rect.top;
 
 
-        const rotateY =
+        const tiltX =
+          -(
+            y -
+            rect.height / 2
+          ) / 40;
+
+        const tiltY =
           (
             x -
             rect.width / 2
           ) / 40;
 
 
-        const rotateX =
-          -(
-            y -
-            rect.height / 2
-          ) / 40;
-
-
-        gsap.to(
-          panel,
-          {
-
-            rotateX:
-              rotateX,
-
-            rotateY:
-              rotateY,
-
-            transformPerspective:
-              900,
-
-            duration:
-              0.35,
-
-            ease:
-              "power2.out"
-
-          }
-        );
+        setRotateX(tiltX);
+        setRotateY(tiltY);
 
       }
     );
@@ -1700,24 +1691,8 @@ featurePanels.forEach(
       "mouseleave",
       () => {
 
-        gsap.to(
-          panel,
-          {
-
-            rotateX:
-              0,
-
-            rotateY:
-              0,
-
-            duration:
-              0.6,
-
-            ease:
-              "power3.out"
-
-          }
-        );
+        setRotateX(0);
+        setRotateY(0);
 
       }
     );
@@ -1753,7 +1728,7 @@ gsap.to(
         "bottom top",
 
       scrub:
-        1
+        0.2
 
     }
 
@@ -2063,7 +2038,7 @@ gsap.to(
         "bottom top",
 
       scrub:
-        1
+        0.2
 
     }
 
@@ -2259,7 +2234,7 @@ document
               target,
               {
                 offset: -80,
-                duration: prefersReducedMotion ? 0 : 1.3
+                duration: prefersReducedMotion ? 0 : 0.8
               }
             );
 

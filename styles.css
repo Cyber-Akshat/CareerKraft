@@ -45,7 +45,7 @@
 
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 
@@ -394,6 +394,10 @@ h3 {
   background:
     rgba(8, 3, 14, 0.58);
 
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+
   backdrop-filter:
     blur(22px);
 
@@ -403,6 +407,15 @@ h3 {
   box-shadow:
     0 20px 50px
     rgba(0, 0, 0, 0.18);
+}
+
+
+.navbar.is-scrolled {
+  background:
+    rgba(8, 3, 14, 0.88);
+
+  border-color:
+    rgba(205, 169, 255, 0.20);
 }
 
 
