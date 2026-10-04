@@ -2153,79 +2153,144 @@ gsap.from(
 ========================================= */
 
 const earlyAccessForm =
-  document.querySelector(
-    "#early-access-form"
-  );
+  document.querySelector("#early-access-form");
+
+const emailInput =
+  document.querySelector("#early-access-email");
 
 
-if (earlyAccessForm) {
+if (earlyAccessForm && emailInput) {
 
   earlyAccessForm.addEventListener(
     "submit",
-    (event) => {
+    async (event) => {
 
       event.preventDefault();
 
-
-      const emailInput =
-        document.querySelector(
-          "#early-access-email"
-        );
-
-
       const email =
-        emailInput.value.trim();
-
+        emailInput.value
+          .trim()
+          .toLowerCase();
 
       if (!email) {
-
         return;
-
       }
 
 
       const button =
-        earlyAccessForm
-          .querySelector(
-            "button"
-          );
-
+        earlyAccessForm.querySelector("button");
 
       const originalText =
         button.textContent;
 
 
-      button.textContent =
-        "You're on the list ✓";
+      button.disabled = true;
+      button.textContent = "Joining...";
 
 
-      button.style.background =
-        "linear-gradient(135deg, #3bb98f, #279671)";
+      try {
+
+        const { data, error } =
+          await supabaseClient
+            .from("early_access")
+            .insert([
+              {
+                email: email
+              }
+            ]);
 
 
-      emailInput.value =
-        "";
+        if (error) {
+
+          console.error(
+            "Supabase insert error:",
+            error
+          );
 
 
-      setTimeout(
-        () => {
+          if (error.code === "23505") {
+
+            button.textContent =
+              "You're already on the list ✓";
+
+          } else {
+
+            button.textContent =
+              "Something went wrong";
+
+          }
+
+
+          setTimeout(() => {
+
+            button.textContent =
+              originalText;
+
+            button.disabled =
+              false;
+
+          }, 3000);
+
+
+          return;
+        }
+
+
+        console.log(
+          "Saved successfully:",
+          email
+        );
+
+
+        emailInput.value = "";
+
+        button.textContent =
+          "You're on the list ✓";
+
+        button.style.background =
+          "linear-gradient(135deg, #3bb98f, #279671)";
+
+
+        setTimeout(() => {
 
           button.textContent =
             originalText;
 
-
           button.style.background =
             "";
 
-        },
-        3500
-      );
+          button.disabled =
+            false;
+
+        }, 3000);
+
+
+      } catch (error) {
+
+        console.error(
+          "Supabase connection error:",
+          error
+        );
+
+        button.textContent =
+          "Connection failed";
+
+        setTimeout(() => {
+
+          button.textContent =
+            originalText;
+
+          button.disabled =
+            false;
+
+        }, 3000);
+
+      }
 
     }
   );
 
 }
-
 
 
 /* =========================================
