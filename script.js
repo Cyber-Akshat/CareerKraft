@@ -14,39 +14,36 @@ const prefersReducedMotion = window.matchMedia(
 const themeToggle =
   document.querySelector("#theme-toggle");
 
-themeToggle.addEventListener(
-  "click",
-  () => {
+if (themeToggle) {
+  const applyTheme = (nextTheme) => {
+    const safeTheme = nextTheme === "dark" ? "dark" : "light";
+
+    document.documentElement.dataset.theme = safeTheme;
+    localStorage.setItem("careerkraft-theme", safeTheme);
+
+    const isDark = safeTheme === "dark";
+    const label = `Switch to ${isDark ? "light" : "dark"} mode`;
+
+    themeToggle.setAttribute("aria-label", label);
+    themeToggle.setAttribute("title", label);
+    themeToggle.setAttribute("aria-pressed", String(safeTheme === "light"));
+  };
+
+  const storedTheme = localStorage.getItem("careerkraft-theme");
+  const preferredTheme =
+    storedTheme ||
+    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+  applyTheme(preferredTheme);
+
+  themeToggle.addEventListener("click", () => {
     const nextTheme =
-      document.documentElement.dataset.theme === "light"
-        ? "dark"
-        : "light";
+      document.documentElement.dataset.theme === "dark"
+        ? "light"
+        : "dark";
 
-    document.documentElement.dataset.theme =
-      nextTheme;
-    localStorage.setItem(
-      "careerkraft-theme",
-      nextTheme
-    );
-
-    const nextLabel =
-      nextTheme === "light"
-        ? "Switch to dark mode"
-        : "Switch to light mode";
-
-    themeToggle.setAttribute("aria-label", nextLabel);
-    themeToggle.setAttribute("title", nextLabel);
-    themeToggle.setAttribute(
-      "aria-pressed",
-      String(nextTheme === "light")
-    );
-  }
-);
-
-if (document.documentElement.dataset.theme === "light") {
-  themeToggle.setAttribute("aria-label", "Switch to dark mode");
-  themeToggle.setAttribute("title", "Switch to dark mode");
-  themeToggle.setAttribute("aria-pressed", "true");
+    applyTheme(nextTheme);
+  });
 }
 
 

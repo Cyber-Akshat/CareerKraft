@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>CareerKraft | Sign In</title>
+
+  <link
+    rel="stylesheet"
+    href="auth.css"
+  >
+
+</head>
+
+
+<body>
+
+
+  <main class="auth-layout">
+
+
+    <!-- ========================================
+         LEFT — AUTHENTICATION
+    ========================================= -->
+
+    <section class="auth-left">
+
+
+      <a
+        href="index.html"
+        class="auth-logo"
+      >
+
+        <img
+          src="assets/logo.png"
+          alt="CareerKraft"
+        >
+
+      </a>
+
+
+
+      <div class="auth-box">
+
+
+        <!-- ==============================
+             HEADER
+        ============================== -->
+
+        <div class="auth-heading">
+
+
+          <span class="auth-icon">
+            ✦
+          </span>
+
+
+          <h1 id="auth-title">
+            Welcome back
+          </h1>
+
+
+          <p id="auth-subtitle">
+            Sign in to your CareerKraft account.
+          </p>
+
+
+        </div>
+
+
+
+        <!-- ==============================
+             TABS
+        ============================== -->
+
+        <div class="auth-tabs">
+
+
+          <button
+            type="button"
+            id="login-tab"
+            class="auth-tab active"
+          >
+            Sign in
+          </button>
+
+
+          <button
+            type="button"
+            id="register-tab"
+            class="auth-tab"
+          >
+            Create account
+          </button>
+
+
+          <div
+            id="auth-tab-slider"
+            class="auth-tab-slider"
+          ></div>
+
+
+        </div>
+
+
+
+        <!-- ==============================
+             GOOGLE
+        ============================== -->
+
+        <button
+          type="button"
+          class="google-button"
+          id="google-login"
+        >
+
+          <span class="google-icon">
+            G
+          </span>
+
+          <span>
+            Continue with Google
+          </span>
+
+        </button>
+
+
+
+        <!-- ==============================
+             DIVIDER
+        ============================== -->
+
+        <div class="divider">
+
+          <span></span>
+
+          <p>
+            or
+          </p>
+
+          <span></span>
+
+        </div>
+
+
+
+        <!-- ========================================
+             LOGIN FORM
+        ========================================= -->
+
+        <form
+          id="login-form"
+          class="auth-form"
+        >
+
+
+          <div class="form-group">
+
+            <label for="login-email">
+              Email address
+            </label>
+
+            <input
+              type="email"
+              id="login-email"
+              placeholder="name@example.com"
+              autocomplete="email"
+              required
+            >
+
+          </div>
+
+
+
+          <div class="form-group">
+
+            <div class="label-row">
+
+              <label for="login-password">
+                Password
+              </label>
+
+
+              <a
+                href="#"
+                id="forgot-password"
+                class="forgot-password"
+              >
+                Forgot password?
+              </a>
+
+            </div>
+
+
+            <div class="password-wrapper">
+
+              <input
+                type="password"
+                id="login-password"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+                required
+              >
+
+
+              <button
+                type="button"
+                class="password-toggle"
+                data-target="login-password"
+              >
+                Show
+              </button>
+
+            </div>
+
+          </div>
+
+
+
+          <button
+            type="submit"
+            id="login-button"
+            class="main-button"
+          >
+
+            <span>
+              Continue
+            </span>
+
+            <span>
+              →
+            </span>
+
+          </button>
+
+
+          <div
+            id="login-message"
+            class="auth-message"
+          ></div>
+
+
+        </form>
+
+
+
+        <!-- ========================================
+             REGISTER FORM
+        ========================================= -->
+
+        <form
+          id="register-form"
+          class="auth-form hidden"
+        >
+
+
+          <div class="form-group">
+
+            <label for="register-name">
+              Your name
+            </label>
+
+            <input
+              type="text"
+              id="register-name"
+              placeholder="Your name"
+              autocomplete="name"
+              required
+            >
+
+          </div>
+
+
+
+          <div class="form-group">
+
+            <label for="register-email">
+              Email address
+            </label>
+
+            <input
+              type="email"
+              id="register-email"
+              placeholder="name@example.com"
+              autocomplete="email"
+              required
+            >
+
+          </div>
+
+
+
+          <div class="form-group">
+
+            <label for="register-password">
+              Password
+            </label>
+
+
+            <div class="password-wrapper">
+
+              <input
+                type="password"
+                id="register-password"
+                placeholder="At least 8 characters"
+                autocomplete="new-password"
+                minlength="8"
+                required
+              >
+
+
+              <button
+                type="button"
+                class="password-toggle"
+                data-target="register-password"
+              >
+                Show
+              </button>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="form-group">
+
+            <label for="confirm-password">
+              Confirm password
+            </label>
+
+
+            <div class="password-wrapper">
+
+              <input
+                type="password"
+                id="confirm-password"
+                placeholder="Repeat your password"
+                autocomplete="new-password"
+                minlength="8"
+                required
+              >
+
+
+              <button
+                type="button"
+                class="password-toggle"
+                data-target="confirm-password"
+              >
+                Show
+              </button>
+
+            </div>
+
+          </div>
+
+
+
+          <label class="terms-row">
+
+            <input
+              type="checkbox"
+              id="register-terms"
+              required
+            >
+
+            <span>
+              I agree to the
+              <a href="#">Terms</a>
+              and
+              <a href="#">Privacy Policy</a>.
+            </span>
+
+          </label>
+
+
+
+          <button
+            type="submit"
+            id="register-button"
+            class="main-button"
+          >
+
+            <span>
+              Create account
+            </span>
+
+            <span>
+              →
+            </span>
+
+          </button>
+
+
+          <div
+            id="register-message"
+            class="auth-message"
+          ></div>
+
+
+        </form>
+
+
+
+        <!-- ==============================
+             SWITCH
+        ============================== -->
+
+        <div class="auth-switch">
+
+          <p id="auth-switch-text">
+
+            New here?
+
+            <button
+              type="button"
+              id="auth-switch-button"
+            >
+              Create an account
+            </button>
+
+          </p>
+
+        </div>
+
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         RIGHT — CAREERKRAFT STORY
+    ========================================= -->
+
+    <section class="auth-right">
+
+
+      <div class="feature-mosaic">
+
+
+        <!-- MAIN TILE -->
+
+        <div class="feature-tile tile-main">
+
+          <div class="tile-icon">
+            ◎
+          </div>
+
+          <span>
+            Find your fit
+          </span>
+
+        </div>
+
+
+
+        <!-- ROADMAP -->
+
+        <div class="feature-tile tile-small">
+
+          <div class="tile-icon">
+            ↗
+          </div>
+
+          <span>
+            Build your roadmap
+          </span>
+
+        </div>
+
+
+
+        <!-- SKILLS -->
+
+        <div class="feature-tile tile-small tile-light">
+
+          <div class="tile-icon">
+            ✦
+          </div>
+
+          <span>
+            Build your skills
+          </span>
+
+        </div>
+
+
+
+        <!-- PROGRESS -->
+
+        <div class="feature-tile tile-tall">
+
+          <div class="progress-visual">
+
+            <div class="progress-circle">
+              68%
+            </div>
+
+            <div class="progress-lines">
+
+              <span></span>
+              <span></span>
+              <span></span>
+
+            </div>
+
+          </div>
+
+          <span>
+            Track your progress
+          </span>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div class="right-content">
+
+
+        <div class="career-badge">
+
+          <img
+            src="assets/logo.png"
+            alt=""
+          >
+
+          <span>
+            CareerKraft
+          </span>
+
+        </div>
+
+
+        <h2>
+
+          Your future.
+
+          <span>
+            Built by you.
+          </span>
+
+        </h2>
+
+
+        <p>
+
+          Discover your direction.
+          Build real skills.
+          Become ready for what comes next.
+
+        </p>
+
+
+      </div>
+
+
+    </section>
+
+
+  </main>
+
+
+
+  <!-- SUPABASE -->
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  ></script>
+
+
+  <!-- AUTH -->
+
+  <script src="auth.js"></script>
+
+
+</body>
+
+</html>
