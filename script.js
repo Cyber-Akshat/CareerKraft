@@ -1,8 +1,53 @@
 gsap.registerPlugin(ScrollTrigger);
+const SUPABASE_URL = "https://vrvhccnvrwvocoimjpkg.supabase.co";
+const SUPABASE_KEY = "sb_publishable_YmDYvdVDX1eXOqBx-Iickw_bZc5zj_V";
+const supabaseClient =
+  window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
 
 const prefersReducedMotion = window.matchMedia(
   "(prefers-reduced-motion: reduce)"
 ).matches;
+
+const themeToggle =
+  document.querySelector("#theme-toggle");
+
+themeToggle.addEventListener(
+  "click",
+  () => {
+    const nextTheme =
+      document.documentElement.dataset.theme === "light"
+        ? "dark"
+        : "light";
+
+    document.documentElement.dataset.theme =
+      nextTheme;
+    localStorage.setItem(
+      "careerkraft-theme",
+      nextTheme
+    );
+
+    const nextLabel =
+      nextTheme === "light"
+        ? "Switch to dark mode"
+        : "Switch to light mode";
+
+    themeToggle.setAttribute("aria-label", nextLabel);
+    themeToggle.setAttribute("title", nextLabel);
+    themeToggle.setAttribute(
+      "aria-pressed",
+      String(nextTheme === "light")
+    );
+  }
+);
+
+if (document.documentElement.dataset.theme === "light") {
+  themeToggle.setAttribute("aria-label", "Switch to dark mode");
+  themeToggle.setAttribute("title", "Switch to dark mode");
+  themeToggle.setAttribute("aria-pressed", "true");
+}
 
 
 
@@ -379,6 +424,18 @@ const navbar =
     "#navbar"
   );
 
+const backToTop =
+  document.querySelector("#back-to-top");
+
+backToTop.addEventListener(
+  "click",
+  () => {
+    lenis.scrollTo(0, {
+      duration: prefersReducedMotion ? 0 : 0.8
+    });
+  }
+);
+
 
 const moveNavbar =
   gsap.quickTo(
@@ -409,6 +466,20 @@ window.addEventListener(
 
     const currentScroll =
       window.scrollY;
+
+    const showBackToTop =
+      currentScroll > 500;
+
+    backToTop.classList.toggle(
+      "is-visible",
+      showBackToTop
+    );
+    backToTop.setAttribute(
+      "aria-hidden",
+      String(!showBackToTop)
+    );
+    backToTop.tabIndex =
+      showBackToTop ? 0 : -1;
 
 
     const isScrolled =
@@ -2224,6 +2295,11 @@ document
               targetID
             );
 
+          const targetContent =
+            target?.querySelector(
+              ".section-tag, h1, h2"
+            ) || target;
+
 
           if (target) {
 
@@ -2231,9 +2307,9 @@ document
 
 
             lenis.scrollTo(
-              target,
+              targetContent,
               {
-                offset: -80,
+                offset: -110,
                 duration: prefersReducedMotion ? 0 : 0.8
               }
             );

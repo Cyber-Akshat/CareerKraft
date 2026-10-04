@@ -19,6 +19,12 @@
     CareerKraft | Don't Just Choose Your Future. Build It.
   </title>
 
+  <script>
+    if (localStorage.getItem("careerkraft-theme") === "light") {
+      document.documentElement.dataset.theme = "light";
+    }
+  </script>
+
   <link
     rel="stylesheet"
     href="styles.css"
@@ -133,15 +139,47 @@
 
 
 
-    <a
-      href="#early-access"
-      class="navbar-cta magnetic"
-    >
-      Join Early Access
-    </a>
+    <div class="navbar-actions">
+      <button
+        class="theme-toggle"
+        id="theme-toggle"
+        type="button"
+        aria-label="Switch to light mode"
+        title="Switch to light mode"
+        aria-pressed="false"
+      >
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+        </svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"></path>
+        </svg>
+      </button>
 
+      <a
+        href="#early-access"
+        class="navbar-cta magnetic"
+      >
+        Join Early Access
+      </a>
+    </div>
 
   </header>
+
+  <button
+    class="back-to-top"
+    id="back-to-top"
+    type="button"
+    aria-label="Back to top"
+    title="Back to top"
+    aria-hidden="true"
+    tabindex="-1"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 19V5m-7 7 7-7 7 7"></path>
+    </svg>
+  </button>
 
 
 
@@ -335,7 +373,8 @@
 
 
           <h2>
-            Career uncertainty isn't a small problem.
+            Career uncertainty
+            <span class="sweep-highlight">isn't a small problem.</span>
           </h2>
 
         </div>
@@ -1450,7 +1489,7 @@
         <h2>
           Better direction.
           Better preparation.
-          Better-informed choices.
+          <span class="sweep-highlight">Better-informed choices.</span>
         </h2>
 
       </div>
@@ -1848,7 +1887,7 @@
     src="https://cdn.jsdelivr.net/npm/@studio-freight/lenis@1.0.42/dist/lenis.min.js"
   ></script>
 
-
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="script.js"></script>
 
 
