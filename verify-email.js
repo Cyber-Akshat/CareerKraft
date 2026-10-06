@@ -27,7 +27,7 @@ const email =
   params.get("email");
 
 const postAuthUrl =
-  new URL("index.html", window.location.href).href;
+  new URL("onboarding.html", window.location.href).href;
 
 
 const emailElement =

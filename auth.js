@@ -16,8 +16,81 @@ const supabaseClient =
   );
 
 const postAuthUrl =
-  new URL("index.html", window.location.href).href;
+  new URL("onboarding.html", window.location.href).href;
 
+/* =========================================
+   GOOGLE LOGIN
+========================================= */
+
+const googleLoginButton =
+  document.querySelector("#google-login");
+
+
+if (googleLoginButton) {
+
+  googleLoginButton.addEventListener(
+    "click",
+    async () => {
+
+      const originalText =
+        googleLoginButton.innerHTML;
+
+
+      googleLoginButton.disabled =
+        true;
+
+
+      googleLoginButton.innerHTML = `
+        <span class="google-icon">G</span>
+        <span>Connecting...</span>
+      `;
+
+      const {
+        data,
+        error
+      } =
+        await supabaseClient
+          .auth
+          .signInWithOAuth({
+
+            provider:
+              "google",
+
+            options: {
+              redirectTo:
+                postAuthUrl
+            }
+          });
+
+
+      if (error) {
+
+        console.error(
+          "Google login error:",
+          error
+        );
+
+        googleLoginButton.disabled =
+          false;
+
+
+        googleLoginButton.innerHTML =
+          originalText;
+
+
+        loginMessage.textContent =
+          "Google sign in failed. Please try again.";
+
+
+        loginMessage.className =
+          "auth-message error";
+
+      }
+
+    }
+  );
+
+}
 
 
 /* =========================================
@@ -186,13 +259,6 @@ loginTab.addEventListener(
   "click",
   showLogin
 );
-
-
-switchButton.addEventListener(
-  "click",
-  showLogin
-);
-
 
 
 /* =========================================
@@ -877,7 +943,6 @@ async function checkSession() {
     await supabaseClient
       .auth
       .getSession();
-
 
   if (
     data.session

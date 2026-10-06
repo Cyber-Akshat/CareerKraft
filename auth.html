@@ -12,16 +12,46 @@
 
   <title>CareerKraft | Sign In</title>
 
+  <script>
+    document.documentElement.dataset.theme =
+      localStorage.getItem("careerkraft-theme") === "light"
+        ? "light"
+        : "dark";
+  </script>
+
   <link
     rel="stylesheet"
     href="auth.css"
   >
+
+  <link
+    rel="stylesheet"
+    href="cursor.css"
+  >
+
+  <script src="cursor.js" defer></script>
 
 </head>
 
 
 <body>
 
+  <button
+    class="auth-theme-toggle"
+    id="auth-theme-toggle"
+    type="button"
+    aria-label="Switch to light mode"
+    title="Switch to light mode"
+    aria-pressed="false"
+  >
+    <svg class="auth-theme-icon auth-theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="4"></circle>
+      <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+    </svg>
+    <svg class="auth-theme-icon auth-theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"></path>
+    </svg>
+  </button>
 
   <main class="auth-layout">
 
@@ -584,6 +614,7 @@
   <!-- AUTH -->
 
   <script src="auth.js"></script>
+  <script src="auth-theme.js"></script>
 
 
 </body>

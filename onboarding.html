@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Build your personalised CareerKraft career profile."
+  >
+
+  <title>
+    CareerKraft | Build Your Profile
+  </title>
+
+  <script>
+    document.documentElement.dataset.theme =
+      localStorage.getItem("careerkraft-theme") === "light"
+        ? "light"
+        : "dark";
+  </script>
+
+  <link
+    rel="stylesheet"
+    href="./onboarding.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="./cursor.css"
+  >
+
+  <script src="./cursor.js" defer></script>
+
+</head>
+
+
+<body>
+
+
+  <main class="onboarding-app">
+
+
+    <!-- ========================================
+         TOP NAV
+    ========================================= -->
+
+    <nav class="onboarding-nav">
+
+
+      <a
+        href="index.html"
+        class="onboarding-brand"
+      >
+
+        <img
+          src="assets/logo.png"
+          alt="CareerKraft"
+        >
+
+        <span>
+          CareerKraft
+        </span>
+
+      </a>
+
+
+
+      <div class="onboarding-progress-info">
+
+        <span id="progress-label">
+          Getting started
+        </span>
+
+        <button
+          type="button"
+          id="onboarding-theme-toggle"
+          class="onboarding-theme-toggle"
+          aria-label="Switch to light mode"
+          title="Switch to light mode"
+          aria-pressed="false"
+        >
+          <svg class="onboarding-theme-icon onboarding-theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+          </svg>
+          <svg class="onboarding-theme-icon onboarding-theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"></path>
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          id="logout-button"
+          class="logout-button"
+        >
+          Log out
+        </button>
+
+      </div>
+
+
+    </nav>
+
+
+
+    <!-- ========================================
+         PROGRESS BAR
+    ========================================= -->
+
+    <div class="progress-bar">
+
+      <div
+        class="progress-bar-fill"
+        id="progress-bar-fill"
+      ></div>
+
+    </div>
+
+
+
+    <!-- ========================================
+         ONBOARDING CONTENT
+    ========================================= -->
+
+    <section class="onboarding-stage">
+
+
+
+      <!-- ========================================
+           SCREEN 0 — WELCOME
+      ========================================= -->
+
+      <section
+        class="onboarding-screen active"
+        data-screen="0"
+      >
+
+
+        <div class="welcome-layout">
+
+
+          <div class="welcome-copy">
+
+
+            <span class="eyebrow">
+              WELCOME TO CAREERKRAFT
+            </span>
+
+
+            <h1>
+
+              Your future shouldn't feel like&nbsp;a
+
+              <span>
+                guessing game.
+              </span>
+
+            </h1>
+
+
+            <p>
+
+              We'll learn about your interests,
+              strengths and preferences to help
+              uncover careers worth exploring.
+
+            </p>
+
+
+            <button
+              type="button"
+              class="primary-button"
+              data-next
+            >
+
+              <span>
+                Build my career profile
+              </span>
+
+              <span class="button-arrow">
+                →
+              </span>
+
+            </button>
+
+
+            <div class="welcome-note">
+
+              <span>
+                ✦
+              </span>
+
+              <p>
+                Takes around 2 minutes.
+                There are no right or wrong answers.
+              </p>
+
+            </div>
+
+
+          </div>
+
+
+
+          <!-- VISUAL -->
+
+          <div class="welcome-visual">
+
+
+            <div class="visual-orbit orbit-a"></div>
+
+            <div class="visual-orbit orbit-b"></div>
+
+
+            <div class="career-core">
+
+              <img
+                src="assets/logo.png"
+                alt=""
+              >
+
+            </div>
+
+
+            <div class="floating-career career-one">
+
+              <span class="career-icon">
+                &lt;/&gt;
+              </span>
+
+              <p>
+                Technology
+              </p>
+
+            </div>
+
+
+            <div class="floating-career career-two">
+
+              <span class="career-icon">
+                ↗
+              </span>
+
+              <p>
+                Business
+              </p>
+
+            </div>
+
+
+            <div class="floating-career career-three">
+
+              <span class="career-icon">
+                ✦
+              </span>
+
+              <p>
+                Creative
+              </p>
+
+            </div>
+
+
+            <div class="floating-career career-four">
+
+              <span class="career-icon">
+                ⬡
+              </span>
+
+              <p>
+                Science
+              </p>
+
+            </div>
+
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- ========================================
+           SCREEN 1 — INTERESTS
+      ========================================= -->
+
+      <section
+        class="onboarding-screen"
+        data-screen="1"
+      >
+
+
+        <div class="question-container">
+
+
+          <div class="question-header">
+
+
+            <span class="question-number">
+              01
+            </span>
+
+
+            <span class="question-step">
+              INTERESTS
+            </span>
+
+
+            <h2>
+              What are you naturally interested in?
+            </h2>
+
+
+            <p>
+              Choose everything that sounds like something
+              you'd genuinely enjoy exploring.
+            </p>
+
+
+          </div>
+
+
+
+          <div
+            class="choice-grid"
+            data-question="interests"
+            data-min="2"
+          >
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="technology"
+            >
+
+              <span class="choice-icon">
+                &lt;/&gt;
+              </span>
+
+              <strong>
+                Technology
+              </strong>
+
+              <small>
+                Software, cyber, AI and digital products
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="business"
+            >
+
+              <span class="choice-icon">
+                ↗
+              </span>
+
+              <strong>
+                Business
+              </strong>
+
+              <small>
+                Companies, strategy and entrepreneurship
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="science"
+            >
+
+              <span class="choice-icon">
+                ⚗
+              </span>
+
+              <strong>
+                Science
+              </strong>
+
+              <small>
+                Research, discovery and experimentation
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="creative"
+            >
+
+              <span class="choice-icon">
+                ✦
+              </span>
+
+              <strong>
+                Creative
+              </strong>
+
+              <small>
+                Design, content and creating new ideas
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="engineering"
+            >
+
+              <span class="choice-icon">
+                ⚙
+              </span>
+
+              <strong>
+                Engineering
+              </strong>
+
+              <small>
+                Building and solving real-world problems
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="helping-people"
+            >
+
+              <span class="choice-icon">
+                ♡
+              </span>
+
+              <strong>
+                Helping people
+              </strong>
+
+              <small>
+                Supporting, teaching and improving lives
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="finance"
+            >
+
+              <span class="choice-icon">
+                £
+              </span>
+
+              <strong>
+                Finance
+              </strong>
+
+              <small>
+                Money, investing and financial decisions
+              </small>
+
+            </button>
+
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="media"
+            >
+
+              <span class="choice-icon">
+                ▶
+              </span>
+
+              <strong>
+                Media
+              </strong>
+
+              <small>
+                Film, social media and storytelling
+              </small>
+
+            </button>
+
+
+          </div>
+
+
+          <p class="selection-hint">
+            Choose at least 2
+          </p>
+
+
+          <div class="question-navigation">
+
+            <button
+              type="button"
+              class="back-button"
+              data-back
+            >
+              ← Back
+            </button>
+
+
+            <button
+              type="button"
+              class="primary-button question-next"
+              data-next
+            >
+
+              Continue
+
+              <span>
+                →
+              </span>
+
+            </button>
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- ========================================
+           SCREEN 2 — SUBJECTS
+      ========================================= -->
+
+      <section
+        class="onboarding-screen"
+        data-screen="2"
+      >
+
+
+        <div class="question-container">
+
+
+          <div class="question-header">
+
+
+            <span class="question-number">
+              02
+            </span>
+
+
+            <span class="question-step">
+              SUBJECTS
+            </span>
+
+
+            <h2>
+              Which subjects do you enjoy most?
+            </h2>
+
+
+            <p>
+              Think about what you enjoy learning,
+              not only what you get the highest grades in.
+            </p>
+
+
+          </div>
+
+
+
+          <div
+            class="choice-grid compact-grid"
+            data-question="subjects"
+            data-min="1"
+          >
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="computing"
+            >
+              <strong>Computing</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="mathematics"
+            >
+              <strong>Mathematics</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="science"
+            >
+              <strong>Science</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="business"
+            >
+              <strong>Business</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="english"
+            >
+              <strong>English</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="design"
+            >
+              <strong>Design</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="geography"
+            >
+              <strong>Geography</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="history"
+            >
+              <strong>History</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="art"
+            >
+              <strong>Art</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="economics"
+            >
+              <strong>Economics</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="psychology"
+            >
+              <strong>Psychology</strong>
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card compact"
+              data-value="engineering"
+            >
+              <strong>Engineering</strong>
+            </button>
+
+
+          </div>
+
+
+          <p class="selection-hint">
+            Choose at least 1
+          </p>
+
+
+          <div class="question-navigation">
+
+            <button
+              type="button"
+              class="back-button"
+              data-back
+            >
+              ← Back
+            </button>
+
+
+            <button
+              type="button"
+              class="primary-button question-next"
+              data-next
+            >
+              Continue →
+            </button>
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- ========================================
+           SCREEN 3 — STRENGTHS
+      ========================================= -->
+
+      <section
+        class="onboarding-screen"
+        data-screen="3"
+      >
+
+
+        <div class="question-container">
+
+
+          <div class="question-header">
+
+
+            <span class="question-number">
+              03
+            </span>
+
+
+            <span class="question-step">
+              STRENGTHS
+            </span>
+
+
+            <h2>
+              What sounds most like you?
+            </h2>
+
+
+            <p>
+              Select the strengths you recognise
+              in yourself.
+            </p>
+
+
+          </div>
+
+
+
+          <div
+            class="choice-grid"
+            data-question="strengths"
+            data-min="2"
+          >
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="problem-solving"
+            >
+
+              <span class="choice-icon">
+                ◇
+              </span>
+
+              <strong>
+                Problem solving
+              </strong>
+
+              <small>
+                I enjoy figuring out how things work.
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="communication"
+            >
+
+              <span class="choice-icon">
+                ◌
+              </span>
+
+              <strong>
+                Communication
+              </strong>
+
+              <small>
+                I can explain ideas and connect with people.
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="creativity"
+            >
+
+              <span class="choice-icon">
+                ✦
+              </span>
+
+              <strong>
+                Creativity
+              </strong>
+
+              <small>
+                I enjoy imagining different possibilities.
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="analysis"
+            >
+
+              <span class="choice-icon">
+                ◫
+              </span>
+
+              <strong>
+                Analytical thinking
+              </strong>
+
+              <small>
+                I like working with facts and patterns.
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="leadership"
+            >
+
+              <span class="choice-icon">
+                ↑
+              </span>
+
+              <strong>
+                Leadership
+              </strong>
+
+              <small>
+                I like organising people and ideas.
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="attention-to-detail"
+            >
+
+              <span class="choice-icon">
+                ◎
+              </span>
+
+              <strong>
+                Attention to detail
+              </strong>
+
+              <small>
+                I notice things other people sometimes miss.
+              </small>
+
+            </button>
+
+
+          </div>
+
+
+          <p class="selection-hint">
+            Choose at least 2
+          </p>
+
+
+          <div class="question-navigation">
+
+            <button
+              type="button"
+              class="back-button"
+              data-back
+            >
+              ← Back
+            </button>
+
+
+            <button
+              type="button"
+              class="primary-button question-next"
+              data-next
+            >
+              Continue →
+            </button>
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- ========================================
+           SCREEN 4 — WORK STYLE
+      ========================================= -->
+
+      <section
+        class="onboarding-screen"
+        data-screen="4"
+      >
+
+
+        <div class="question-container">
+
+
+          <div class="question-header">
+
+
+            <span class="question-number">
+              04
+            </span>
+
+
+            <span class="question-step">
+              WORK STYLE
+            </span>
+
+
+            <h2>
+              What kind of work sounds best to you?
+            </h2>
+
+
+            <p>
+              There's no perfect answer.
+              Choose what feels closest to you right now.
+            </p>
+
+
+          </div>
+
+
+
+          <div
+            class="choice-grid"
+            data-question="workStyle"
+            data-min="1"
+            data-max="3"
+          >
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="building"
+            >
+
+              <span class="choice-icon">
+                ⚙
+              </span>
+
+              <strong>
+                Building things
+              </strong>
+
+              <small>
+                Creating products, systems or technology
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="people"
+            >
+
+              <span class="choice-icon">
+                ◌
+              </span>
+
+              <strong>
+                Working with people
+              </strong>
+
+              <small>
+                Communicating, helping and collaborating
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="research"
+            >
+
+              <span class="choice-icon">
+                ⌕
+              </span>
+
+              <strong>
+                Researching
+              </strong>
+
+              <small>
+                Investigating questions and finding answers
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="creative"
+            >
+
+              <span class="choice-icon">
+                ✦
+              </span>
+
+              <strong>
+                Creating ideas
+              </strong>
+
+              <small>
+                Designing, writing or making content
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="data"
+            >
+
+              <span class="choice-icon">
+                ▥
+              </span>
+
+              <strong>
+                Working with data
+              </strong>
+
+              <small>
+                Finding patterns and making decisions
+              </small>
+
+            </button>
+
+
+            <button
+              type="button"
+              class="choice-card"
+              data-value="leadership"
+            >
+
+              <span class="choice-icon">
+                ↗
+              </span>
+
+              <strong>
+                Leading projects
+              </strong>
+
+              <small>
+                Planning, organising and making decisions
+              </small>
+
+            </button>
+
+
+          </div>
+
+
+          <p class="selection-hint">
+            Choose up to 3
+          </p>
+
+
+          <div class="question-navigation">
+
+            <button
+              type="button"
+              class="back-button"
+              data-back
+            >
+              ← Back
+            </button>
+
+
+            <button
+              type="button"
+              class="primary-button question-next"
+              id="analyse-button"
+            >
+              Find my careers →
+            </button>
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- ========================================
+           SCREEN 5 — ANALYSING
+      ========================================= -->
+
+      <section
+        class="onboarding-screen analysis-screen"
+        data-screen="5"
+      >
+
+
+        <div class="analysis-content">
+
+
+          <div class="analysis-animation">
+
+
+            <div class="analysis-ring ring-one"></div>
+
+            <div class="analysis-ring ring-two"></div>
+
+            <div class="analysis-ring ring-three"></div>
+
+
+            <div class="analysis-core">
+
+              <img
+                src="assets/logo.png"
+                alt=""
+              >
+
+            </div>
+
+
+          </div>
+
+
+          <span class="eyebrow">
+            BUILDING YOUR PROFILE
+          </span>
+
+
+          <h2 id="analysis-title">
+            Finding careers that fit you.
+          </h2>
+
+
+          <p id="analysis-text">
+            Looking at your interests,
+            strengths and preferred way of working.
+          </p>
+
+
+          <div class="analysis-status">
+
+
+            <div class="analysis-status-row active">
+
+              <span>
+                ✓
+              </span>
+
+              Understanding your interests
+
+            </div>
+
+
+            <div class="analysis-status-row">
+
+              <span>
+                •
+              </span>
+
+              Connecting your strengths
+
+            </div>
+
+
+            <div class="analysis-status-row">
+
+              <span>
+                •
+              </span>
+
+              Ranking career matches
+
+            </div>
+
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- ========================================
+           SCREEN 6 — RESULTS
+      ========================================= -->
+
+      <section
+        class="onboarding-screen results-screen"
+        data-screen="6"
+      >
+
+
+        <div class="results-container">
+
+
+          <div class="results-heading">
+
+
+            <span class="eyebrow">
+              YOUR CAREER MATCHES
+            </span>
+
+
+            <h2>
+              Three paths worth exploring.
+            </h2>
+
+
+            <p>
+              These aren't decisions about your future.
+              They're strong starting points based on
+              what you've told us.
+            </p>
+
+
+          </div>
+
+
+
+          <div
+            class="career-results"
+            id="career-results"
+          >
+
+
+            <!-- Filled dynamically by onboarding.js -->
+
+
+            <article class="career-result-card top-match">
+
+
+              <div class="match-rank">
+                #1 MATCH
+              </div>
+
+
+              <div class="match-score">
+
+                <span>
+                  91
+                </span>
+
+                <small>
+                  % match
+                </small>
+
+              </div>
+
+
+              <div class="match-content">
+
+                <span class="match-category">
+                  TECHNOLOGY
+                </span>
+
+                <h3>
+                  Software Developer
+                </h3>
+
+                <p>
+                  Build digital products,
+                  solve technical problems
+                  and turn ideas into working software.
+                </p>
+
+
+                <div class="match-reasons">
+
+                  <span>
+                    Problem solving
+                  </span>
+
+                  <span>
+                    Technology
+                  </span>
+
+                  <span>
+                    Building
+                  </span>
+
+                </div>
+
+
+              </div>
+
+
+              <button
+                type="button"
+                class="career-select-button"
+              >
+                Explore this career →
+              </button>
+
+
+            </article>
+
+
+
+            <article class="career-result-card">
+
+
+              <div class="match-rank">
+                #2 MATCH
+              </div>
+
+
+              <div class="match-score">
+
+                <span>
+                  87
+                </span>
+
+                <small>
+                  % match
+                </small>
+
+              </div>
+
+
+              <div class="match-content">
+
+                <span class="match-category">
+                  TECHNOLOGY
+                </span>
+
+                <h3>
+                  Cyber Security Analyst
+                </h3>
+
+                <p>
+                  Protect systems,
+                  investigate threats
+                  and solve security problems.
+                </p>
+
+
+              </div>
+
+
+              <button
+                type="button"
+                class="career-select-button"
+              >
+                Explore this career →
+              </button>
+
+
+            </article>
+
+
+
+            <article class="career-result-card">
+
+
+              <div class="match-rank">
+                #3 MATCH
+              </div>
+
+
+              <div class="match-score">
+
+                <span>
+                  82
+                </span>
+
+                <small>
+                  % match
+                </small>
+
+              </div>
+
+
+              <div class="match-content">
+
+                <span class="match-category">
+                  DATA
+                </span>
+
+                <h3>
+                  Data Analyst
+                </h3>
+
+                <p>
+                  Explore information,
+                  uncover patterns and
+                  turn data into useful decisions.
+                </p>
+
+
+              </div>
+
+
+              <button
+                type="button"
+                class="career-select-button"
+              >
+                Explore this career →
+              </button>
+
+
+            </article>
+
+
+          </div>
+
+
+
+          <button
+            type="button"
+            class="retake-button"
+            id="retake-button"
+          >
+            ← Change my answers
+          </button>
+
+
+        </div>
+
+
+      </section>
+
+
+    </section>
+
+
+  </main>
+
+
+
+  <!-- ========================================
+       SUPABASE
+  ========================================= -->
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  ></script>
+
+
+  <!-- ========================================
+       ONBOARDING
+  ========================================= -->
+
+  <script src="./onboarding.js"></script>
+
+
+</body>
+
+</html>

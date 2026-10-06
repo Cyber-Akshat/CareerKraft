@@ -305,56 +305,6 @@ h3 {
 
 
 /* =========================================
-   CUSTOM CURSOR
-========================================= */
-
-.cursor,
-.cursor-dot {
-  position: fixed;
-
-  left: 0;
-  top: 0;
-
-  pointer-events: none;
-
-  z-index: 9998;
-
-  transform:
-    translate(-50%, -50%);
-
-  border-radius:
-    50%;
-}
-
-
-.cursor {
-  width: 34px;
-
-  height: 34px;
-
-  border:
-    1px solid
-    rgba(201, 166, 255, 0.45);
-
-  transition:
-    width 0.2s ease,
-    height 0.2s ease,
-    background 0.2s ease;
-}
-
-
-.cursor-dot {
-  width: 5px;
-
-  height: 5px;
-
-  background:
-    var(--purple-light);
-}
-
-
-
-/* =========================================
    NAVBAR
 ========================================= */
 
@@ -3558,13 +3508,6 @@ html[data-theme="dark"] .theme-icon-moon {
   }
 
 
-  .cursor,
-  .cursor-dot {
-    display:
-      none;
-  }
-
-
   .navbar {
     width:
       calc(100% - 20px);
@@ -4502,5 +4445,153 @@ html[data-theme="light"] .footer-bottom a:hover {
   .navbar-cta {
     padding: 9px 8px;
     font-size: 0.65rem;
+  }
+}
+
+
+/* =========================================
+   LANDING PAGE GLASS SURFACES
+========================================= */
+
+.hero-content,
+.stat-scene,
+.journey-content,
+.feature-panel,
+.lumia-interface,
+.impact-stage,
+.impact-outcomes article,
+.early-access-content {
+  border: 1px solid rgba(205, 169, 255, 0.18);
+  background-color: rgba(18, 8, 30, 0.48);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+
+.hero-content {
+  padding: clamp(24px, 4vw, 48px);
+  border-radius: 32px;
+  background:
+    linear-gradient(125deg, rgba(156, 92, 255, 0.12), transparent 62%),
+    rgba(13, 6, 24, 0.58);
+}
+
+
+.stat-scene {
+  padding: 40px;
+  border-radius: 28px;
+}
+
+
+.journey-content {
+  padding: clamp(22px, 3vw, 36px);
+  border-radius: 26px;
+  background:
+    linear-gradient(125deg, rgba(156, 92, 255, 0.1), transparent 68%),
+    rgba(18, 8, 30, 0.42);
+}
+
+
+.feature-panel {
+  background:
+    linear-gradient(145deg, rgba(156, 92, 255, 0.12), rgba(18, 8, 30, 0.48));
+}
+
+
+.lumia-interface {
+  background:
+    linear-gradient(145deg, rgba(82, 45, 121, 0.72), rgba(18, 8, 30, 0.62));
+}
+
+
+.impact-stage,
+.impact-outcomes article {
+  background:
+    linear-gradient(145deg, rgba(156, 92, 255, 0.1), rgba(18, 8, 30, 0.4));
+}
+
+
+.early-access-content {
+  padding: clamp(28px, 5vw, 54px);
+  border-radius: 32px;
+  background:
+    linear-gradient(145deg, rgba(156, 92, 255, 0.12), rgba(13, 6, 24, 0.62));
+}
+
+
+:root[data-theme="light"] .hero-content,
+:root[data-theme="light"] .stat-scene,
+:root[data-theme="light"] .journey-content,
+:root[data-theme="light"] .feature-panel,
+:root[data-theme="light"] .lumia-interface,
+:root[data-theme="light"] .impact-stage,
+:root[data-theme="light"] .impact-outcomes article,
+:root[data-theme="light"] .early-access-content {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: #efe8f8;
+  box-shadow:
+    12px 12px 28px rgba(72, 48, 96, 0.14),
+    -10px -10px 24px rgba(255, 255, 255, 0.92),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.88),
+    inset -1px -1px 2px rgba(104, 77, 134, 0.08);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+
+:root[data-theme="light"] .hero-content {
+  background: #f2ebfb;
+}
+
+
+:root[data-theme="light"] .journey-content,
+:root[data-theme="light"] .impact-stage,
+:root[data-theme="light"] .impact-outcomes article {
+  background: #f1eafa;
+}
+
+
+:root[data-theme="light"] .feature-panel {
+  background: #efe8f8;
+}
+
+
+:root[data-theme="light"] .lumia-interface {
+  background: #f2ebfb;
+}
+
+
+:root[data-theme="light"] .early-access-content {
+  background: #f1eafa;
+}
+
+
+:root[data-theme="light"] .feature-panel:hover {
+  border-color: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    15px 15px 32px rgba(72, 48, 96, 0.16),
+    -10px -10px 24px rgba(255, 255, 255, 0.96),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.92),
+    inset -1px -1px 2px rgba(104, 77, 134, 0.08);
+}
+
+
+@media (max-width: 700px) {
+  .hero-content {
+    padding: 24px 20px;
+    border-radius: 24px;
+  }
+
+  .stat-scene {
+    padding: 28px 22px;
+    border-radius: 22px;
+  }
+
+  .journey-content {
+    padding: 22px;
+    border-radius: 20px;
   }
 }
