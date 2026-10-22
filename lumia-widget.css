@@ -1,0 +1,133 @@
+.lumia-widget{--lumia-text:#392d50;--lumia-muted:#796f8a;--lumia-border:rgba(104,75,149,.16);--lumia-accent:#7851c5;font-family:inherit}
+@scope (.lumia-widget) {
+.lumia-widget *,.lumia-widget *:before,.lumia-widget *:after{box-sizing:border-box}
+.lumia-widget button,.lumia-widget textarea{font:inherit}
+.lumia-widget button:focus-visible,.lumia-widget textarea:focus-visible{outline:3px solid #a982f3;outline-offset:3px}
+.lumia-launcher{position:fixed;right:24px;bottom:24px;z-index:9001;display:flex;align-items:center;gap:10px;min-height:58px;padding:7px 20px 7px 8px;border:1px solid #ffffffb8;border-radius:999px;color:#fff;background:linear-gradient(145deg,#8961d5,#5e38a5);box-shadow:8px 9px 22px #432a693d,inset 2px 2px 5px #ffffff66,inset -3px -3px 8px #25134638;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.lumia-launcher:hover{box-shadow:10px 13px 26px #432a694d,inset 2px 2px 5px #ffffff73}
+/* Lumia stays centered while its surface moves like a water droplet. */
+.lumia-launcher-orb,.lumia-header-orb,.lumia-welcome-orb{position:relative;isolation:isolate;display:grid;flex:0 0 auto;place-items:center;border-radius:50%;color:white;background:radial-gradient(circle at 32% 25%,#fff5ff,#d8b8ff 24%,#9664e6 58%,#532b9b);box-shadow:0 5px 14px #4b2b8247,inset 2px 2px 5px #ffffffcc,inset -3px -4px 8px #371c684d;animation:lumia-water-shape 5.8s ease-in-out infinite}
+.lumia-launcher-orb:before,.lumia-header-orb:before,.lumia-welcome-orb:before{content:"";position:absolute;inset:12%;z-index:-1;border:1px solid #fff9;border-radius:50%;box-shadow:0 0 3px #f6eaff88,inset 0 0 3px #fff5;opacity:0;pointer-events:none;animation:lumia-water-ripple 3.6s ease-out infinite}
+.lumia-launcher-orb:after,.lumia-header-orb:after,.lumia-welcome-orb:after{content:"";position:absolute;top:13%;left:17%;width:48%;height:26%;z-index:-1;border-radius:50%;background:linear-gradient(150deg,#ffffffb3,#ffffff08 80%);transform:rotate(-28deg);pointer-events:none;animation:lumia-water-reflection 5.8s ease-in-out infinite}
+.lumia-launcher-orb{width:42px;height:42px;font-size:17px}
+.lumia-launcher-text{font-size:13px;font-weight:750}
+.lumia-unread{position:absolute;top:2px;right:2px;width:12px;height:12px;border:2px solid #f7f2ff;border-radius:50%;background:#ff6a86;box-shadow:0 0 0 4px #ff6a8633,0 0 13px #ff4c75bf}
+.lumia-panel{position:fixed;right:24px;bottom:94px;z-index:9000;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;width:min(430px,calc(100vw - 32px));height:min(690px,calc(100dvh - 122px));overflow:hidden;border:1px solid #ffffffd9;border-radius:26px;color:var(--lumia-text);background:linear-gradient(145deg,#f7f2ff,#ece4fa);box-shadow:13px 16px 42px #2f1f753d,inset 3px 3px 9px #fffffff2,inset -5px -5px 12px #9479be2e;opacity:0;pointer-events:none;transform:translateY(16px) scale(.97);transform-origin:bottom right;transition:opacity .22s ease,transform .25s cubic-bezier(.22,1,.36,1)}
+.lumia-panel[hidden],.lumia-welcome[hidden]{display:none!important}
+.lumia-panel.is-open{opacity:1;pointer-events:auto;transform:translateY(0) scale(1)}
+.lumia-header{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:72px;padding:13px 16px;border-bottom:1px solid var(--lumia-border);background:#ffffff5c}
+.lumia-identity{display:flex;align-items:center;gap:11px}
+.lumia-header-orb{width:42px;height:42px;font-size:18px}
+.lumia-identity-text strong,.lumia-identity-text span{display:block}
+.lumia-identity-text strong{color:var(--lumia-text);font-size:15px}
+.lumia-identity-text span{margin-top:2px;color:var(--lumia-muted);font-size:10px}
+.lumia-header-actions{display:flex;gap:6px}
+.lumia-header-button{display:grid;width:36px;height:36px;place-items:center;border:1px solid var(--lumia-border);border-radius:50%;color:var(--lumia-text);background:#ffffff8f;box-shadow:2px 3px 8px #4c396c1a,inset 1px 1px 3px #fff;cursor:pointer;font-size:19px;transition:transform .18s ease,background .18s ease}
+.lumia-header-button:hover{transform:translateY(-2px);background:#fff}
+.lumia-context-strip{display:flex;align-items:center;gap:8px;min-height:36px;padding:7px 17px;border-bottom:1px solid var(--lumia-border);color:var(--lumia-muted);background:#855bc40e;font-size:10px}
+.lumia-context-dot{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:#7cce94;box-shadow:0 0 9px #49b56f8c}
+.lumia-chat{min-height:0;overflow-y:auto;padding:18px 16px 22px;scroll-behavior:smooth}
+.lumia-welcome{display:flex;min-height:100%;flex-direction:column;align-items:center;justify-content:center;padding:20px 6px;text-align:center}
+.lumia-welcome-orb{width:68px;height:68px;margin-bottom:18px;font-size:25px}
+.lumia-welcome-label{margin-bottom:7px;color:var(--lumia-accent);font-size:9px;font-weight:850;letter-spacing:.14em}
+.lumia-welcome h2{max-width:300px;margin:0 0 8px;color:var(--lumia-text);font-size:21px;line-height:1.25}
+.lumia-welcome>p{max-width:330px;margin:0 auto;color:var(--lumia-muted);font-size:12px;line-height:1.6}
+.lumia-suggestions{display:grid;width:100%;gap:8px;margin-top:20px}
+.lumia-suggestion{width:100%;padding:11px 13px;border:1px solid #70529d24;border-radius:13px;color:#514167;background:#ffffff85;box-shadow:3px 4px 9px #503b6e14,inset 1px 1px 3px #fff;cursor:pointer;font-size:11px;font-weight:650;text-align:left;transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.lumia-suggestion:after{float:right;color:var(--lumia-accent);content:"\2192"}
+.lumia-suggestion:hover:not(:disabled){transform:translateX(2px);border-color:#70529d47;background:#fff}
+.lumia-message{display:flex;align-items:flex-start;gap:9px;margin-bottom:15px}
+.lumia-message-user{flex-direction:row-reverse}
+.lumia-message-avatar{display:grid;width:29px;height:29px;flex:0 0 29px;place-items:center;border:1px solid #70529d24;border-radius:50%;color:var(--lumia-accent);background:#ffffffa8;font-size:9px;font-weight:750}
+.lumia-message-content{max-width:84%}
+.lumia-message-bubble{padding:10px 12px;border:1px solid #70529d1a;border-radius:6px 15px 15px;color:#46395b;background:#ffffffad;box-shadow:3px 4px 10px #46336512,inset 1px 1px 3px #ffffffe6;font-size:12px;line-height:1.6;overflow-wrap:anywhere;white-space:pre-wrap}
+.lumia-message-user .lumia-message-bubble{border-color:#754cb729;border-radius:15px 6px 15px 15px;color:#fff;background:linear-gradient(145deg,#8b62d3,#6946a9);box-shadow:4px 5px 12px #49316d33,inset 1px 1px 3px #ffffff42}
+.lumia-typing{display:flex;min-width:54px;align-items:center;gap:5px;padding:15px}
+.lumia-typing span{color:var(--lumia-accent);animation:lumia-typing 1.1s ease-in-out infinite}
+.lumia-typing span:nth-child(2){animation-delay:.15s}.lumia-typing span:nth-child(3){animation-delay:.3s}
+.lumia-composer{padding:11px 13px 12px;border-top:1px solid var(--lumia-border);background:#ffffff6b}
+.lumia-input-wrap{display:flex;align-items:flex-end;gap:8px;padding:7px 7px 7px 12px;border:1px solid #70529d2b;border-radius:15px;background:#ffffffad;box-shadow:inset 2px 2px 5px #5b437a14,2px 2px 5px #ffffffcc}
+.lumia-input{width:100%;min-height:38px;max-height:130px;resize:none;padding:8px 0;border:0;outline:0;color:var(--lumia-text);background:transparent;font-size:12px;line-height:1.5}
+.lumia-input::placeholder{color:#968ba6}
+.lumia-send{display:grid;width:38px;height:38px;flex:0 0 38px;place-items:center;border:0;border-radius:12px;color:#fff;background:linear-gradient(145deg,#a177e8,#7045b9);box-shadow:3px 5px 10px #482e7738,inset 1px 1px 3px #ffffff66;cursor:pointer;font-size:18px}
+.lumia-send:disabled{cursor:default;opacity:.48}
+.lumia-composer-footer{display:flex;justify-content:space-between;gap:8px;margin-top:6px;padding:0 3px;color:var(--lumia-muted);font-size:9px}
+.lumia-character-count.is-over-limit,.lumia-status{color:#bc3d56}
+.lumia-status:empty{display:none}.lumia-status{margin:5px 3px 0;font-size:10px}
+}
+:root[data-theme="dark"] .lumia-widget{--lumia-text:#f3edff;--lumia-muted:#b5abc9;--lumia-border:#ddcaff26;--lumia-accent:#c1a0ff}
+:root[data-theme="dark"] .lumia-panel{border-color:#dac6ff38;color:var(--lumia-text);background:radial-gradient(circle at 88% 0%,#8249ef30,transparent 34%),linear-gradient(145deg,#1d2036d1,#0d111fe0);box-shadow:0 28px 80px #0000007a,inset 0 1px 0 #ffffff1f;backdrop-filter:blur(24px) saturate(135%);-webkit-backdrop-filter:blur(24px) saturate(135%)}
+:root[data-theme="dark"] .lumia-header,:root[data-theme="dark"] .lumia-composer{background:#121427a8}
+:root[data-theme="dark"] .lumia-header-button,:root[data-theme="dark"] .lumia-suggestion,:root[data-theme="dark"] .lumia-message-avatar{border-color:#ddcaff24;color:#eee5ff;background:#ffffff13;box-shadow:inset 0 1px 0 #ffffff1f}
+:root[data-theme="dark"] .lumia-context-strip{color:#bcb2d0;background:#7048b11a}
+:root[data-theme="dark"] .lumia-welcome h2,:root[data-theme="dark"] .lumia-message-bubble,:root[data-theme="dark"] .lumia-input{color:#f3edff}
+:root[data-theme="dark"] .lumia-welcome>p,:root[data-theme="dark"] .lumia-suggestion,:root[data-theme="dark"] .lumia-composer-footer{color:#c0b6d2}
+:root[data-theme="dark"] .lumia-message-bubble,:root[data-theme="dark"] .lumia-input-wrap{border-color:#ddcaff21;background:#ffffff11;box-shadow:inset 0 1px 0 #ffffff17}
+:root[data-theme="dark"] .lumia-message-user .lumia-message-bubble{background:linear-gradient(145deg,#784bc2cc,#4e3486db)}
+:root[data-theme="dark"] .lumia-input::placeholder{color:#988eaa}
+@keyframes lumia-water-shape{0%,100%{border-radius:49% 51% 48% 52% / 50% 47% 53% 50%;transform:scale(1)}28%{border-radius:44% 56% 53% 47% / 53% 49% 51% 47%;transform:scale(1.035,.965)}62%{border-radius:53% 47% 45% 55% / 47% 54% 46% 53%;transform:scale(.97,1.03)}}
+@keyframes lumia-water-ripple{0%{transform:scale(.22);opacity:0}16%{opacity:.65}76%,100%{transform:scale(1.25);opacity:0}}
+@keyframes lumia-water-reflection{0%,100%{transform:rotate(-28deg) scale(1);opacity:.75}48%{transform:rotate(-8deg) scale(.82,1.16);opacity:.4}}
+@keyframes lumia-typing{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+@scope (.lumia-widget) {
+@media(max-width:650px){.lumia-launcher{right:15px;bottom:15px;min-height:54px}.lumia-panel{right:0;bottom:0;width:100%;height:min(90dvh,780px);max-height:100dvh;border-right:0;border-bottom:0;border-left:0;border-radius:23px 23px 0 0;transform:translateY(24px);transform-origin:bottom center}.lumia-panel.is-open{transform:translateY(0)}.lumia-chat{padding:15px 13px 19px}.lumia-message-content{max-width:88%}}
+@media(prefers-reduced-motion:reduce){.lumia-launcher-orb,.lumia-header-orb,.lumia-welcome-orb,.lumia-launcher-orb:before,.lumia-header-orb:before,.lumia-welcome-orb:before,.lumia-launcher-orb:after,.lumia-header-orb:after,.lumia-welcome-orb:after,.lumia-typing span{animation:none}.lumia-panel,.lumia-launcher,.lumia-suggestion{transition:none}}
+}
+@scope (.lumia-widget) {
+.lumia-launcher{right:30px;bottom:28px;width:56px;min-width:56px;padding:0 6px;gap:0;overflow:hidden;transition:width .25s ease,transform .2s ease,box-shadow .2s ease}
+.lumia-launcher-text{max-width:0;margin-left:0;overflow:hidden;opacity:0;white-space:nowrap;transition:max-width .25s ease,opacity .2s ease,margin .25s ease}
+.lumia-launcher:hover,.lumia-launcher:focus-visible{width:150px}
+.lumia-launcher:hover .lumia-launcher-text,.lumia-launcher:focus-visible .lumia-launcher-text{max-width:90px;margin-left:8px;opacity:1}
+.lumia-launcher:focus-visible{outline:none}
+@media(max-width:650px){.lumia-launcher{right:15px;bottom:15px}}
+}
+
+.lumia-widget .lumia-retry-button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--lumia-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--lumia-accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+@media (max-width: 650px) {
+  .lumia-widget .lumia-launcher[aria-expanded="true"] { visibility: hidden; pointer-events: none; }
+  .lumia-widget .lumia-header-button { width: 44px; height: 44px; }
+  .lumia-widget .lumia-input { font-size: 16px; }
+  .lumia-widget .lumia-send { width: 44px; height: 44px; flex-basis: 44px; }
+  .lumia-widget .lumia-suggestion { min-height: 44px; font-size: 13px; }
+  .lumia-widget .lumia-message-bubble { font-size: 14px; }
+  .lumia-widget .lumia-composer-footer { font-size: 10px; }
+}
+
+.lumia-widget .lumia-panel { max-width: calc(100% - 32px); }
+.lumia-widget :is(.lumia-identity, .lumia-identity-text, .lumia-message-content, .lumia-input-wrap, .lumia-input) { min-width: 0; }
+.lumia-widget .lumia-message-content { flex: 0 1 auto; max-width: calc(100% - 38px); }
+.lumia-widget .lumia-header-actions { flex-shrink: 0; }
+.lumia-widget .lumia-composer-footer { flex-wrap: wrap; }
+.lumia-widget .lumia-launcher:focus-visible { outline: 3px solid #a982f3; outline-offset: 3px; }
+@media (max-width: 650px) {
+  .lumia-widget .lumia-panel { max-width: 100%; }
+  .lumia-widget .lumia-composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+}
+
+.lumia-widget .lumia-privacy-notice {
+  margin: 0 3px 9px;
+  color: var(--lumia-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.lumia-widget .lumia-privacy-notice a {
+  color: var(--lumia-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.lumia-widget .lumia-privacy-notice a:focus-visible {
+  outline: 3px solid var(--lumia-accent);
+  outline-offset: 3px;
+}

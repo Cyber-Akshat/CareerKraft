@@ -1,0 +1,228 @@
+/* Shared layout safeguards. Content wraps or scrolls inside its own component;
+   the page never conceals overflowing controls with a global overflow rule. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+*, *::before, *::after { box-sizing: border-box; }
+body, main, section, article, header, footer, nav, form, fieldset, figure { min-inline-size: 0; }
+:where(h1, h2, h3, h4, p, li, dt, dd, a, label, button, [role="status"], [role="alert"]) { overflow-wrap: anywhere; }
+:where(img, video, canvas) { max-inline-size: 100%; }
+:where(img, video) { object-fit: contain; }
+:where(input, textarea, select, button) { max-inline-size: 100%; }
+:where(input:not([type="checkbox"], [type="radio"]), textarea, select) { min-inline-size: 0; }
+textarea { resize: vertical; }
+pre { max-inline-size: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, a, input[type="submit"], input[type="button"] { touch-action: manipulation; }
+:where(a, button, input, textarea, select, summary):focus-visible { outline: 3px solid #9570cf; outline-offset: 4px; }
+:where(button, input, textarea, select):disabled, [aria-disabled="true"] { cursor: not-allowed; }
+[aria-busy="true"], [aria-busy="true"] :where(button, input, textarea, select) { cursor: progress; }
+:where([role="status"], [role="alert"]) { min-inline-size: 0; max-inline-size: 100%; }
+.page-retry-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 14px; }
+.privacy-notice { margin: 12px 0; color: var(--muted, inherit); font-size: .875rem; line-height: 1.65; overflow-wrap: anywhere; }
+.privacy-notice a { color: inherit; text-decoration: underline; text-underline-offset: .2em; }
+dialog { max-inline-size: calc(100% - 24px); max-block-size: calc(100dvh - 24px); overscroll-behavior: contain; }
+
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  width: min(1200px, calc(100% - 40px));
+  margin: 28px auto 0;
+  padding: 20px 0;
+  border-top: 1px solid var(--border, #d9d0e6);
+  color: var(--muted, #6f627e);
+  font: 400 14px/1.6 "Segoe UI", sans-serif;
+}
+.site-footer p { margin: 0; }
+.site-footer nav, .site-footer-links { display: flex; align-items: center; flex-wrap: wrap; gap: 0 20px; }
+.site-footer a { display: inline-flex; align-items: center; min-height: 44px; color: inherit; text-decoration: none; }
+.site-footer a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Useful destinations also have a complete, readable layout when a route has
+   moved or a visitor follows a link that no longer exists. */
+.site-state-page {
+  --site-page: #f1edf9;
+  --site-card: #faf7ff;
+  --site-text: #393252;
+  --site-muted: #71667e;
+  --site-accent: #7550b9;
+  --site-line: #dcd0ed;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0;
+  background: radial-gradient(ellipse at 88% 10%, #e5d4fa99, transparent 55%),
+    radial-gradient(ellipse at 10% 90%, #d2e8e180, transparent 55%), var(--site-page);
+  color: var(--site-text);
+  font: 400 18px/1.7 "Segoe UI", sans-serif;
+}
+:root[data-theme="dark"] .site-state-page {
+  --site-page: #101224;
+  --site-card: #22243b;
+  --site-text: #f0eafb;
+  --site-muted: #bbb0cb;
+  --site-accent: #c9aff1;
+  --site-line: #d2b6f633;
+  background: radial-gradient(ellipse at 88% 10%, #744fa033, transparent 55%),
+    radial-gradient(ellipse at 10% 90%, #42778022, transparent 55%), var(--site-page);
+}
+.site-state-header { width: min(1160px, calc(100% - 40px)); margin: 0 auto; padding: 26px 0; }
+.site-state-header a { display: inline-flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; font-size: 22px; font-weight: 750; }
+.site-state-header img { width: 42px; height: 42px; object-fit: contain; }
+.site-state-main { display: grid; flex: 1; align-items: center; width: min(760px, calc(100% - 40px)); margin: 30px auto 50px; }
+.site-state-card { padding: clamp(26px, 6vw, 58px); border: 1px solid var(--site-line); border-radius: 30px; background: var(--site-card); box-shadow: 12px 18px 50px #4b315416, inset 0 1px 0 #ffffff70; }
+.site-state-code { margin: 0 0 12px; color: var(--site-accent); font-size: 16px; font-weight: 750; letter-spacing: .12em; }
+.site-state-card h1 { margin: 0 0 18px; font-size: clamp(32px, 5vw, 48px); line-height: 1.16; letter-spacing: -.035em; }
+.site-state-card > p:not(.site-state-code) { margin: 0; color: var(--site-muted); }
+.site-state-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.site-state-actions a { display: inline-flex; min-height: 52px; align-items: center; justify-content: center; padding: 12px 20px; border: 1px solid var(--site-line); border-radius: 14px; text-align: center; text-decoration: none; font-size: 17px; font-weight: 650; line-height: 1.5; }
+.site-state-primary { color: #fff; background: #7550b9; }
+.site-state-secondary { color: var(--site-accent); background: transparent; }
+.site-state-actions a:hover { box-shadow: 0 5px 18px #72519d30; }
+.site-state-page .site-footer { border-color: var(--site-line); color: var(--site-muted); }
+
+@media (min-width: 601px) {
+  .dashboard-app + .site-footer { width: calc(100% - var(--sidebar-width, 205px) - 56px); margin-left: calc(var(--sidebar-width, 205px) + 28px); }
+}
+@media (max-width: 600px) {
+  .site-footer { gap: 4px 20px; padding: 16px 0; font-size: 14px; }
+  .site-footer nav { gap: 0 18px; }
+  .site-state-header { padding: 20px 0; }
+  .site-state-main { margin-top: 16px; }
+  .site-state-card { border-radius: 24px; }
+  .site-state-actions { flex-direction: column; }
+  .site-state-actions a { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+:root[data-reduced-motion="true"], :root[data-reduced-motion="true"] * { scroll-behavior: auto !important; }
+:root[data-reduced-motion="true"] *, :root[data-reduced-motion="true"] *::before, :root[data-reduced-motion="true"] *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+
+/* One shared cookie choice, available again through every page's footer. */
+.cookie-banner {
+  --cookie-surface: #faf7ff;
+  --cookie-text: #393252;
+  --cookie-muted: #64566f;
+  --cookie-border: #d9c8ed;
+  --cookie-accent: #7044ad;
+  --cookie-button-text: #fff;
+  position: fixed;
+  z-index: 10000;
+  left: max(20px, env(safe-area-inset-left));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 20px;
+  width: min(700px, calc(100% - max(20px, env(safe-area-inset-left)) - max(20px, env(safe-area-inset-right))));
+  max-width: calc(100vw - max(20px, env(safe-area-inset-left)) - max(20px, env(safe-area-inset-right)));
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 24px;
+  border: 1px solid var(--cookie-border);
+  border-radius: 22px;
+  color: var(--cookie-text);
+  background: var(--cookie-surface);
+  box-shadow: 0 12px 48px #36214c33, inset 0 1px 0 #ffffffa6;
+  font: 400 16px/1.6 "Segoe UI", sans-serif;
+  text-align: left;
+}
+.cookie-banner[hidden] { display: none !important; }
+.cookie-banner .cookie-banner-copy h2 { margin: 0 0 8px; color: var(--cookie-text); font: 700 20px/1.3 "Segoe UI", sans-serif; letter-spacing: -.02em; }
+.cookie-banner .cookie-banner-copy p { margin: 0; color: var(--cookie-muted); font: inherit; }
+.cookie-banner .cookie-banner-copy a { color: var(--cookie-accent); text-decoration: underline; text-underline-offset: .2em; }
+.cookie-banner .cookie-banner-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.cookie-banner .cookie-banner-button {
+  appearance: none;
+  display: inline-flex;
+  flex: 1 1 180px;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 11px 18px;
+  border: 1px solid var(--cookie-accent);
+  border-radius: 12px;
+  color: var(--cookie-button-text);
+  background: var(--cookie-accent);
+  box-shadow: none;
+  font: 650 16px/1.5 "Segoe UI", sans-serif;
+  letter-spacing: normal;
+  text-align: center;
+  text-transform: none;
+  cursor: pointer;
+}
+.cookie-banner .cookie-banner-button:hover { filter: brightness(1.1); }
+.cookie-banner :is(a, button):focus-visible { outline: 3px solid var(--cookie-accent); outline-offset: 4px; }
+footer .cookie-settings-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  cursor: pointer;
+}
+footer .cookie-settings-button:hover { text-decoration: underline; text-underline-offset: 4px; }
+footer .cookie-settings-button:focus-visible { outline: 3px solid #9570cf; outline-offset: 4px; }
+:root[data-theme="dark"] .cookie-banner {
+  --cookie-surface: #22243b;
+  --cookie-text: #f0eafb;
+  --cookie-muted: #d0c4df;
+  --cookie-border: #6b597e;
+  --cookie-accent: #d2b5fa;
+  --cookie-button-text: #2c2040;
+  box-shadow: 0 12px 48px #0006, inset 0 1px 0 #ffffff14;
+}
+@media (max-width: 480px) {
+  .cookie-banner { left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom)); width: calc(100% - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))); max-width: calc(100vw - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); gap: 16px; padding: 20px; border-radius: 18px; }
+  .cookie-banner .cookie-banner-button { flex-basis: 100%; }
+}
+
+/* The font stays local; enabling it does not contact a font service. */
+@font-face {
+  font-family: "OpenDyslexic";
+  src: url("/assets/accessibility/OpenDyslexic-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+:root[data-dyslexia-font="true"] body,
+:root[data-dyslexia-font="true"] body :not(svg, svg *, code, pre, kbd, samp) {
+  font-family: "OpenDyslexic", sans-serif !important;
+}
+.intro-skip { max-width: calc(100vw - 24px); }
+:root[data-font-size="large"] .intro-nav-inner,
+:root[data-dyslexia-font="true"] .intro-nav-inner { flex-wrap: wrap; padding-block: 12px; }
+:root[data-contrast="high"] { --ck-display-contrast: 1.35; }
+:root[data-saturation="low"] { --ck-display-saturation: .5; }
+:root[data-saturation="high"] { --ck-display-saturation: 1.5; }
+:root[data-saturation="grayscale"] { --ck-display-saturation: 0; }
+/* Filtering the root keeps fixed controls relative to the viewport. */
+:root[data-contrast="high"], :root[data-saturation]:not([data-saturation="default"]) {
+  filter: contrast(var(--ck-display-contrast, 1)) saturate(var(--ck-display-saturation, 1));
+}
+:root[data-contrast="high"] :is(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid currentColor !important;
+  outline-offset: 4px;
+}
+@media (any-pointer: fine) {
+  :root[data-cursor-size="small"], :root[data-cursor-size="small"] * { cursor: url("/assets/accessibility/cursor-small.svg") 1 1, auto !important; }
+  :root[data-cursor-size="large"], :root[data-cursor-size="large"] * { cursor: url("/assets/accessibility/cursor-large.svg") 2 2, auto !important; }
+  :root[data-cursor-size="small"] :is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"], [type="file"]), textarea, [contenteditable="true"]) { cursor: url("/assets/accessibility/text-small.svg") 8 12, text !important; }
+  :root[data-cursor-size="large"] :is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"], [type="file"]), textarea, [contenteditable="true"]) { cursor: url("/assets/accessibility/text-large.svg") 16 24, text !important; }
+  :root[data-cursor-size]:not([data-cursor-size="default"]) :is(.cursor, .cursor-dot) { display: none !important; }
+}

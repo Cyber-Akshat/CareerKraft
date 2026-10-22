@@ -1,0 +1,28 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
+const { createApp } = require('../server');
+test('skills API requires authentication, isolates users, sorts and summarizes skills', async t => {
+  const { app, db } = createApp({ database: ':memory:' });
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => { server.close(); db.close(); });
+  db.exec("INSERT INTO users(id,email,name,verified,created_at) VALUES(1,'skills@example.com','One',1,1),(2,'other@example.com','Two',1,1)");
+  for (const id of [1,2]) db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(createHash('sha256').update(`skills-${id}`).digest('hex'),id,Date.now()+60000);
+  const get = id => fetch(`http://127.0.0.1:${server.address().port}/api/skills`, { headers: id ? { Cookie: `ck_session=skills-${id}` } : {} });
+  assert.equal((await get()).status,401);
+  const empty = await (await get(1)).json();
+  assert.deepEqual(empty.skills, []);
+  assert.deepEqual(empty.summary, { totalSkills:0,totalVerifications:0 });
+  assert.deepEqual(empty.levels.map(level => level.id), ['beginner', 'intermediate', 'advanced']);
+  const insert = db.prepare('INSERT INTO user_skills(user_id,skill_name,normalized_name,verified_count,first_verified_at,last_verified_at) VALUES(?,?,?,?,?,?)');
+  insert.run(1,'Planning','planning',3,10,20);
+  insert.run(1,'Research','research',3,11,30);
+  insert.run(1,'Writing','writing',1,12,40);
+  insert.run(2,'Private skill','private skill',99,1,100);
+  const result = await (await get(1)).json();
+  assert.deepEqual(result.skills.map(s=>s.name), ['Research','Planning','Writing']);
+  assert.deepEqual(result.summary,{totalSkills:3,totalVerifications:7});
+  assert.deepEqual(result.skills[0],{id:2,name:'Research',verifiedCount:3,firstVerifiedAt:11,lastVerifiedAt:30});
+  assert.deepEqual((await (await get(2)).json()).summary,{totalSkills:1,totalVerifications:99});
+});

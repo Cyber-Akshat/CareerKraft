@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Manage your CareerKraft profile, account security and personal preferences.">
+  <title>Account settings | CareerKraft</title>
+  <script src="/accessibility.js"></script>
+  <script>
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+      document.documentElement.dataset.reducedMotion = localStorage.getItem("careerkraft-reduced-motion") === "true" ? "true" : "false";
+    } catch {}
+  </script>
+  <link rel="stylesheet" href="settings.css">
+  <script src="auth-api.js" defer></script>
+  <script src="assets/avatar-characters.js" defer></script>
+  <script src="settings.js" defer></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#settings-main">Skip to account settings</a>
+  <header class="site-header">
+    <a href="dashboard.html" class="brand" aria-label="CareerKraft dashboard"><img src="assets/logo.png" alt="" width="38" height="38"><span>CareerKraft</span></a>
+    <a class="back-link" href="dashboard.html"><span aria-hidden="true">←</span> Back to dashboard</a>
+  </header>
+
+  <main id="settings-main" class="settings-main">
+    <div class="page-heading"><span class="eyebrow">YOUR SPACE, YOUR WAY</span><h1>Account &amp; settings</h1><p>A few little details. A space that feels like you.</p></div>
+    <div id="page-status" class="page-status" role="status" aria-live="polite">Loading your account…</div>
+    <button id="retry-load" class="button secondary retry-button" type="button" hidden>Try again</button>
+
+    <fieldset id="settings-content" class="settings-content" disabled aria-busy="true">
+      <legend class="sr-only">Your account settings</legend>
+      <section class="profile-hero panel" aria-labelledby="profile-name">
+        <div class="hero-decoration decoration-one" aria-hidden="true"></div><div class="hero-decoration decoration-two" aria-hidden="true"></div>
+        <div class="avatar-wrap"><div class="profile-avatar"><span id="avatar-initials" aria-hidden="true">CK</span><img id="profile-avatar" alt="Your profile picture" hidden></div><button id="choose-avatar" class="avatar-edit" type="button" aria-label="Change profile picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l1.4-2h5.2L16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><circle cx="12" cy="12" r="3.5"/></svg></button></div>
+        <input id="avatar-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose a profile picture">
+        <h2 id="profile-name">Your profile</h2><p id="profile-email" class="profile-email">Your personal CareerKraft space</p>
+        <div class="character-trigger"><button id="choose-character" class="button secondary" type="button" aria-haspopup="dialog" aria-controls="character-dialog">Choose a character</button></div>
+        <p id="avatar-character-summary" class="avatar-character-summary" hidden></p>
+        <div class="avatar-actions"><button id="change-avatar" class="text-button" type="button">Upload a photo</button><span aria-hidden="true">·</span><button id="remove-avatar" class="text-button" type="button" disabled>Remove</button></div>
+        <p class="photo-hint">JPG, PNG or WebP · up to 2 MB</p>
+        <div id="avatar-preview-actions" class="button-row preview-actions" hidden><button id="save-avatar" class="button primary small" type="button">Save photo</button><button id="cancel-avatar" class="button secondary small" type="button">Cancel</button></div>
+        <p id="avatar-status" class="form-status" role="status" aria-live="polite"></p>
+        <div class="profile-stats"><div><strong id="completed-stat">—</strong><span>Activities completed</span></div><div><strong id="skills-stat">—</strong><span>Skills verified</span></div></div>
+      </section>
+
+      <nav class="section-nav" aria-label="Settings sections"><a href="#account">Profile</a><a href="#security">Security</a><a href="#preferences">Accessibility &amp; preferences</a><a href="#cookies">Cookies</a><a href="#privacy">Your data</a></nav>
+
+      <section id="account" class="settings-section panel" aria-labelledby="account-title">
+        <div class="section-heading"><div class="section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></div><div><h2 id="account-title">Your profile</h2><p>The details that make this account yours.</p></div></div>
+        <div class="setting-row"><div class="row-copy"><h3>Display name</h3><p id="display-name-value">—</p></div><button class="button secondary small edit-button" data-editor="name-editor" type="button" aria-expanded="false" aria-controls="name-editor">Edit</button></div>
+        <form id="name-editor" class="inline-editor" hidden><label for="display-name">Display name</label><input id="display-name" name="displayName" autocomplete="nickname" maxlength="100" required><p class="field-hint">This is how you appear across CareerKraft.</p><div class="button-row"><button class="button primary small" type="submit">Save name</button><button class="button secondary small cancel-editor" type="button">Cancel</button></div><p class="form-status" role="status" aria-live="polite"></p></form>
+        <div class="setting-row"><div class="row-copy"><h3>Email address</h3><p id="email-value">—</p></div><button class="button secondary small edit-button" data-editor="email-editor" type="button" aria-expanded="false" aria-controls="email-editor">Edit</button></div>
+        <form id="email-editor" class="inline-editor" hidden><label for="new-email">New email address</label><input id="new-email" name="email" type="email" autocomplete="email" maxlength="254" required><div data-password-required><label for="email-password">Current password</label><input id="email-password" type="password" autocomplete="current-password" maxlength="128"></div><p class="field-hint">We'll email a confirmation link to your new address. Your current email stays active until you confirm.</p><div class="button-row"><button class="button primary small" type="submit" data-sensitive>Send verification email</button><button class="button secondary small cancel-editor" type="button">Cancel</button></div><p class="form-status" role="status" aria-live="polite"></p></form>
+        <div class="setting-row last-row"><div class="row-copy"><h3>Member since</h3><p id="member-since">—</p></div></div>
+      </section>
+
+      <section id="security" class="settings-section panel" aria-labelledby="security-title">
+        <div class="section-heading"><div class="section-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="M8 12l3 3 5-6"/></svg></div><div><h2 id="security-title">Sign-in &amp; security</h2><p>Keep your account in safe hands. Yours.</p></div></div>
+        <div id="google-identity" class="identity-notice" hidden><div><strong id="identity-title">Confirm it's you</strong><p id="identity-copy">Confirm with Google before changing your email, setting a password or deleting your account.</p></div><button id="verify-google" class="button secondary small" type="button">Confirm with Google</button></div>
+        <div class="setting-row"><div class="row-copy"><h3>Password</h3><p id="password-summary">—</p></div><button id="password-edit-button" class="button secondary small edit-button" data-editor="password-editor" type="button" aria-expanded="false" aria-controls="password-editor">Change</button></div>
+        <form id="password-editor" class="inline-editor" hidden><div data-password-required><label for="current-password">Current password</label><input id="current-password" type="password" autocomplete="current-password" maxlength="128"></div><label for="new-password">New password</label><input id="new-password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required aria-describedby="password-hint"><p id="password-hint" class="field-hint">Use 15–128 characters. Choose a unique passphrase and avoid common or repeated passwords.</p><label for="confirm-password">Confirm new password</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required><div class="button-row"><button id="save-password" class="button primary small" type="submit" data-sensitive>Update password</button><button class="button secondary small cancel-editor" type="button">Cancel</button></div><p class="form-status" role="status" aria-live="polite"></p></form>
+        <div class="setting-row google-row"><div class="row-copy"><h3><span class="google-mark" aria-hidden="true">G</span> Google account <span id="google-badge" class="connection-badge" hidden>Connected</span></h3><p id="google-summary">Checking connection…</p></div><button id="google-connect" class="button secondary small edit-button" data-editor="google-link-editor" type="button" disabled aria-expanded="false" aria-controls="google-link-editor">Connect Google</button><button id="google-unlink-edit" class="button secondary small edit-button" data-editor="google-unlink-editor" type="button" aria-expanded="false" aria-controls="google-unlink-editor" hidden>Disconnect</button></div>
+        <form id="google-link-editor" class="inline-editor" hidden><p class="field-hint">Confirm your current password, then choose the Google account you'd like to connect.</p><label for="link-password">Current password</label><input id="link-password" type="password" autocomplete="current-password" maxlength="128" required><div class="button-row"><button class="button primary small" type="submit">Continue to Google</button><button class="button secondary small cancel-editor" type="button">Cancel</button></div><p class="form-status" role="status" aria-live="polite"></p></form>
+        <form id="google-unlink-editor" class="inline-editor" hidden><p class="field-hint">You'll use your email and password to sign in after disconnecting Google.</p><label for="unlink-password">Current password</label><input id="unlink-password" type="password" autocomplete="current-password" maxlength="128" required><div class="button-row"><button class="button primary small" type="submit">Disconnect Google</button><button class="button secondary small cancel-editor" type="button">Cancel</button></div><p class="form-status" role="status" aria-live="polite"></p></form>
+        <div class="setting-row last-row"><div class="row-copy"><h3>Other sessions</h3><p>Sign out of CareerKraft on other browsers and devices. Stay signed in here.</p></div><button id="revoke-sessions" class="button secondary small" type="button">Sign out others</button></div><p id="sessions-status" class="form-status standalone-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="preferences" class="settings-section panel" aria-labelledby="preferences-title">
+        <div class="section-heading"><div class="section-icon peach" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"/><circle cx="12" cy="12" r="4"/></svg></div><div><h2 id="preferences-title">Make yourself comfortable</h2><p>A little more you, on every visit.</p></div></div>
+        <form id="preferences-form"><div class="preference-row"><div class="row-copy"><h3 id="theme-label">Appearance</h3><p>Choose the look of your CareerKraft workspace.</p></div><div class="theme-options" role="group" aria-labelledby="theme-label"><label class="theme-choice"><input type="radio" name="theme" value="light" checked><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg> Light</span></label><label class="theme-choice"><input type="radio" name="theme" value="dark"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10z"/></svg> Dark</span></label></div></div>
+        <div class="setting-row motion-row"><div class="row-copy"><h3 id="motion-label">Reduce motion</h3><p id="motion-description">Keep animations and movement to a minimum.</p></div><label class="switch"><input id="reduced-motion" name="reducedMotion" type="checkbox" aria-labelledby="motion-label" aria-describedby="motion-description"><span aria-hidden="true"></span></label></div>
+        <fieldset class="accessibility-options" aria-describedby="accessibility-description">
+          <legend>Accessibility</legend>
+          <p id="accessibility-description" class="field-hint">Adjust reading and viewing to suit you. Changes preview straight away across CareerKraft in this browser. Save preferences to keep them on your account.</p>
+          <div class="setting-row"><div class="row-copy"><h3 id="dyslexia-font-label">Dyslexia-friendly font</h3><p id="dyslexia-font-description">Try OpenDyslexic and choose the font you find most comfortable to read.</p></div><label class="switch"><input id="dyslexia-font" name="dyslexiaFont" type="checkbox" aria-labelledby="dyslexia-font-label" aria-describedby="dyslexia-font-description"><span aria-hidden="true"></span></label></div>
+          <div class="setting-row accessibility-row"><div class="row-copy"><label for="font-size">Text size</label><p id="font-size-description">Make text smaller or larger throughout the site.</p></div><select id="font-size" name="fontSize" aria-describedby="font-size-description"><option value="small">Small</option><option value="default" selected>Default</option><option value="large">Large</option></select></div>
+          <div class="setting-row accessibility-row"><div class="row-copy"><label for="contrast">Contrast</label><p id="contrast-description">Increase the difference between text, controls and backgrounds.</p></div><select id="contrast" name="contrast" aria-describedby="contrast-description"><option value="default" selected>Default</option><option value="high">High contrast</option></select></div>
+          <div class="setting-row accessibility-row"><div class="row-copy"><label for="saturation">Colour saturation</label><p id="saturation-description">Choose softer colours, stronger colours or shades of grey.</p></div><select id="saturation" name="saturation" aria-describedby="saturation-description"><option value="default" selected>Default</option><option value="low">Low</option><option value="high">High</option><option value="grayscale">Greyscale</option></select></div>
+          <div class="setting-row accessibility-row last-row"><div class="row-copy"><label for="cursor-size">Cursor size</label><p id="cursor-size-description">Change the pointer size when using a mouse or trackpad.</p></div><select id="cursor-size" name="cursorSize" aria-describedby="cursor-size-description"><option value="small">Small</option><option value="default" selected>Default</option><option value="large">Large</option></select></div>
+          <div class="accessibility-preview"><h3>Reading preview</h3><p>Your next step can start with one small idea. Explore your skills at your own pace.</p><a href="dashboard.html">Visit your dashboard</a></div>
+          <button id="reset-accessibility" class="button secondary small" type="button">Reset accessibility options</button>
+        </fieldset>
+        <div class="preferences-footer"><span>Save your preferences to use them on your next visit and other devices.</span><button class="button primary small" type="submit">Save preferences</button></div><p class="form-status standalone-status" role="status" aria-live="polite"></p></form>
+      </section>
+
+      <section id="cookies" class="settings-section panel" aria-labelledby="cookies-title">
+        <div class="section-heading"><div class="section-icon mint" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.8 13.7A9 9 0 1 1 10.3 3.2a4 4 0 0 0 4.5 5.5 4 4 0 0 0 6 5z"/><circle cx="7.5" cy="11" r=".7"/><circle cx="10" cy="16.5" r=".7"/><circle cx="15" cy="13" r=".7"/></svg></div><div><h2 id="cookies-title">Cookie preferences</h2><p>Change your cookie choice whenever you like.</p></div></div>
+        <p id="account-cookie-description" class="account-cookie-copy">Essential cookies keep you signed in and secure. We do not currently use analytics or advertising cookies. Read our <a href="/privacy.html#cookies">cookie policy</a>.</p>
+        <p id="account-cookie-hint" class="field-hint">Your choice applies to this browser and saves immediately.</p>
+        <p id="account-cookie-status" class="form-status account-cookie-status" role="status" aria-live="polite">Checking your cookie choice.</p>
+        <div class="account-cookie-actions" role="group" aria-labelledby="cookies-title" aria-describedby="account-cookie-description account-cookie-hint">
+          <button class="button secondary small account-cookie-choice" type="button" data-account-cookie-choice="rejected" aria-pressed="false" disabled>Reject optional cookies</button>
+          <button class="button secondary small account-cookie-choice" type="button" data-account-cookie-choice="accepted" aria-pressed="false" disabled>Accept optional cookies</button>
+        </div>
+      </section>
+
+      <section id="privacy" class="settings-section panel" aria-labelledby="privacy-title">
+        <div class="section-heading"><div class="section-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/><path d="M12 14v3"/></svg></div><div><h2 id="privacy-title">Your data, your choice</h2><p>You're in control of what comes next.</p></div></div>
+        <p class="privacy-notice">Read our <a href="privacy.html#rights">Privacy Policy for your data rights</a>, including <a href="privacy.html#deletion">what account deletion removes</a> and how to contact us.</p>
+        <div class="setting-row"><div class="row-copy"><h3>Download your data</h3><p>Get a JSON copy of your profile, career progress and saved account data.</p></div><button id="export-data" class="button secondary small" type="button">Download data <span aria-hidden="true">↓</span></button></div><p id="export-status" class="form-status standalone-status" role="status" aria-live="polite"></p>
+        <div class="setting-row"><div class="row-copy"><h3>Sign out</h3><p>Take a break. Your progress will be here when you return.</p></div><button id="sign-out" class="button secondary small" type="button">Sign out</button></div><p id="signout-status" class="form-status standalone-status" role="status" aria-live="polite"></p>
+        <div class="setting-row danger-row last-row"><div class="row-copy"><h3>Delete account</h3><p>Permanently delete your account and the career data linked to it.</p></div><button id="open-delete" class="button danger small" type="button">Delete account</button></div>
+      </section>
+    </fieldset>
+    <footer class="page-footer"><span>&copy; <span data-current-year>2026</span> CareerKraft</span><nav aria-label="Footer navigation"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="terms.html#contact">Contact</a></nav></footer>
+  </main>
+
+  <dialog id="character-dialog" class="character-dialog" aria-labelledby="character-title" aria-describedby="character-description">
+    <form id="character-form">
+      <div class="character-dialog-heading"><h2 id="character-title">Pick your character</h2><p id="character-description">Choose a character for your profile. You can change it any time.</p></div>
+      <div class="character-picker-body">
+        <div id="character-preview" class="character-preview" hidden><img id="character-preview-image" alt="" width="128" height="128"><div><span class="character-preview-label">YOUR SELECTION</span><h3 id="character-preview-name"></h3><p id="character-preview-description"></p></div></div>
+        <fieldset class="character-options"><legend class="sr-only">Profile characters</legend><div id="character-grid" class="character-grid"></div></fieldset>
+      </div>
+      <div class="character-dialog-footer"><p id="character-status" class="form-status" role="status" aria-live="polite"></p><div class="character-dialog-actions"><button id="cancel-character" class="button secondary" type="button">Cancel</button><button id="save-character" class="button primary" type="submit" disabled>Use character</button></div></div>
+    </form>
+  </dialog>
+  <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description"><form id="delete-form"><div class="delete-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg></div><h2 id="delete-title">Delete your account?</h2><p id="delete-description">This permanently removes your profile, roadmap, progress, evidence and skills from CareerKraft. This action cannot be undone.</p><p class="delete-export-hint">If you'd like a copy, download your data before continuing.</p><label for="delete-confirmation">Type <strong>DELETE</strong> to confirm</label><input id="delete-confirmation" autocomplete="off" spellcheck="false" required pattern="DELETE"><div data-password-required><label for="delete-password">Current password</label><input id="delete-password" type="password" autocomplete="current-password" maxlength="128"></div><p id="delete-identity-hint" class="field-hint" hidden>Confirm your identity with Google in the Security section before deleting your account.</p><p id="delete-status" class="form-status" role="status" aria-live="polite"></p><div class="button-row dialog-actions"><button id="cancel-delete" class="button secondary" type="button">Keep my account</button><button id="confirm-delete" class="button danger-fill" type="submit" disabled>Delete permanently</button></div></form></dialog>
+</body>
+</html>
