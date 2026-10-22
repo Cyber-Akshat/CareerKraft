@@ -775,7 +775,7 @@ em { font-family: Georgia, "Times New Roman", serif; font-weight: 400; }
   .intro-card-number { letter-spacing: 0; }
   .intro-lumia-card { padding-inline: 16px; }
 }
-/* The same material language as the dashboard: soft clay by day, glass by night. */
+/* Sculpted controls and dependable reading surfaces in both themes. */
 body.intro-page {
   background: radial-gradient(ellipse at 85% 8%, #eadbff88, transparent 45%), radial-gradient(ellipse at 30% 80%, #d7efea60, transparent 50%), var(--intro-bg);
   background-attachment: fixed;
@@ -830,11 +830,17 @@ body.intro-page {
 .intro-updates-input button { background: linear-gradient(145deg, #efe3ff, #dfcef4); box-shadow: var(--intro-control-shadow); }
 
 :root[data-theme="dark"] body.intro-page {
+  color: var(--intro-ink);
   background: radial-gradient(ellipse at 75% 12%, #744fb048, transparent 44%), radial-gradient(ellipse at 22% 50%, #284b7755, transparent 48%), radial-gradient(ellipse at 85% 92%, #287a7430, transparent 40%), var(--intro-bg);
   background-attachment: fixed;
 }
-:root[data-theme="dark"] .intro-navbar { background: #191b2f; border-color: #e4d8ff26; box-shadow: 0 8px 32px #00000024, inset 0 -1px 0 #ffffff0d; }
-:root[data-theme="dark"] :is(.intro-preview, .intro-feature-card, .intro-film-card, .intro-final-card, .intro-lumia-card) { background: #24243b; border-color: var(--intro-panel-border); box-shadow: var(--intro-glass-shadow); }
+:root[data-theme="dark"] .intro-navbar { color: var(--intro-ink); background: #191b2f; border-color: #e4d8ff26; box-shadow: 0 8px 32px #00000024, inset 0 -1px 0 #ffffff0d; }
+/* Keep reading surfaces opaque, including on browsers that support blur. */
+:root[data-theme="dark"] :is(.intro-navbar, .intro-preview, .intro-feature-card, .intro-film-card, .intro-final-card, .intro-lumia-card) { backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root[data-theme="dark"] :is(.intro-preview, .intro-feature-card, .intro-film-card, .intro-final-card, .intro-lumia-card) { color: var(--intro-ink); background: #24243b; border-color: var(--intro-panel-border); box-shadow: var(--intro-glass-shadow); }
+:root[data-theme="dark"] .intro-feature-card { border-color: #504661; }
+:root[data-theme="dark"] .intro-feature-card h3 { color: var(--intro-ink); }
+:root[data-theme="dark"] .intro-feature-card > p { color: #d4cbdf; }
 :root[data-theme="dark"] .intro-feature-card:hover { box-shadow: var(--intro-glass-shadow), 0 0 0 1px #c3a4ff1c; }
 :root[data-theme="dark"] .intro-preview-wrap:before { background: #40305360; border-color: #c8b1e526; box-shadow: none; }
 :root[data-theme="dark"] .intro-preview-topbar { background: #c2a6ee08; }
@@ -851,7 +857,7 @@ body.intro-page {
 :root[data-theme="dark"] .intro-level-visual > div > span { box-shadow: inset 0 1px 0 #ffffff17, 0 4px 10px #00000015; }
 :root[data-theme="dark"] :is(.intro-match-result, .intro-file, .intro-learn-visual > span) { background-color: #c5b0ef0a; border-color: #d7c6ff24; box-shadow: inset 0 1px 0 #ffffff0d, 0 6px 14px #0000001a; }
 :root[data-theme="dark"] .intro-demo-roadmap .is-current { background: linear-gradient(125deg, #b398f526, #8b9be512); border-color: #cbb4ff45; box-shadow: inset 0 1px 0 #ffffff1a, 0 4px 18px #00000012; }
-:root[data-theme="dark"] .intro-journey-section { background: #191b2f99; }
+:root[data-theme="dark"] .intro-journey-section { background: #191b2f; }
 :root[data-theme="dark"] .intro-button { background: linear-gradient(130deg, #d9caff, #bda5eb); color: #302048; border-color: #efe4ff70; box-shadow: 0 6px 20px #b59af51a, inset 2px 2px 4px #ffffff50, inset -2px -3px 7px #8361af26; }
 :root[data-theme="dark"] .intro-button:hover { background: linear-gradient(130deg, #e4d8ff, #c6b0f0); color: #302048; box-shadow: 0 8px 24px #b59af526, inset 2px 2px 4px #ffffff50; }
 :root[data-theme="dark"] .intro-button:active { box-shadow: inset 3px 3px 8px #63458340; }
@@ -870,17 +876,10 @@ body.intro-page {
 
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .intro-navbar { background: linear-gradient(145deg, #f9f6ffe0, #ede6f6d9); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
-  .intro-lumia-card { background: radial-gradient(ellipse at 5% 0%, #9370be25, transparent 60%), #292334ed; backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
-  :root[data-theme="dark"] .intro-navbar { background: linear-gradient(150deg, #29263ac9, #171b30c9); backdrop-filter: blur(26px) saturate(140%); -webkit-backdrop-filter: blur(26px) saturate(140%); }
-  :root[data-theme="dark"] :is(.intro-preview, .intro-feature-card, .intro-film-card, .intro-final-card, .intro-lumia-card) { background: linear-gradient(140deg, #e4d9ff14, #b4c2fa09), #1d203385; backdrop-filter: blur(22px) saturate(135%); -webkit-backdrop-filter: blur(22px) saturate(135%); }
-  :root[data-theme="dark"] .intro-film-card, :root[data-theme="dark"] .intro-final-card { background: radial-gradient(ellipse at 95% 0, #b29cff18, transparent 60%), linear-gradient(130deg, #b79ef51a, #81b5e60d), #24213d99; }
 }
 @media (max-width: 600px) {
   body.intro-page, :root[data-theme="dark"] body.intro-page { background-attachment: scroll; }
   .intro-feature-card, .intro-preview { border-radius: 24px; }
-  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-    :root[data-theme="dark"] :is(.intro-preview, .intro-feature-card, .intro-film-card, .intro-final-card, .intro-lumia-card), .intro-lumia-card { backdrop-filter: blur(16px) saturate(135%); -webkit-backdrop-filter: blur(16px) saturate(135%); }
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
