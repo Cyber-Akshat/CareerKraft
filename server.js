@@ -474,6 +474,9 @@ async function generateModuleContentWithLumia({ career, step, assessment, previo
 
 function createApp(options = {}) {
   const app = express();
+  // Render terminates HTTPS at its reverse proxy; trust the first proxy so
+  // req.secure and req.protocol recognise forwarded HTTPS before middleware runs.
+  app.set('trust proxy', 1);
   const fetchLumia = options.fetchLumia || fetch;
   const base = (options.base || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const production = process.env.NODE_ENV === 'production';

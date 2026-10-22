@@ -131,8 +131,8 @@ test('queued recovery messages cannot recreate valid reset tokens after email or
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM tokens WHERE user_id IN (2,5)').get().count, 0);
 });
 
-test('dedicated login and register throttles run before password work and cannot be bypassed with forwarded headers', async t => {
-  const { request } = await setup(t, { authSecurityLimits: { loginIP: 2, loginAccount: 10, registrationIP: 2 } });
+test('dedicated login and register throttles run before password work and reject untrusted forwarded headers', async t => {
+  const { request } = await setup(t, { trustProxy: '192.0.2.1', authSecurityLimits: { loginIP: 2, loginAccount: 10, registrationIP: 2 } });
   const login = { email: 'unknown@example.com', password };
   assert.equal((await request('/api/login', login)).status, 401);
   assert.equal((await request('/api/login', login)).status, 401);
@@ -145,6 +145,20 @@ test('dedicated login and register throttles run before password work and cannot
   const blocked = await request('/api/register', { ...registration, email: 'last@example.com' });
   assert.equal(blocked.status, 429);
   assert.deepEqual(blocked.data, limited.data);
+});
+
+test('one-proxy default uses the nearest forwarded client IP for login throttling', async t => {
+  const { request } = await setup(t, { authSecurityLimits: { loginIP: 2, loginAccount: 10 } });
+  for (let index = 0; index < 3; index++) {
+    const result = await request('/api/login', { email: `unknown-${index}@example.com`, password }, {
+      headers: { 'X-Forwarded-For': `198.51.100.${index + 1}, 203.0.113.42` }
+    });
+    assert.equal(result.status, index === 2 ? 429 : 401);
+  }
+  const otherClient = await request('/api/login', { email: 'other-client@example.com', password }, {
+    headers: { 'X-Forwarded-For': '203.0.113.43' }
+  });
+  assert.equal(otherClient.status, 401);
 });
 
 test('login upgrades old hashes and rotates an existing cookie while keeping the newly issued session within its cap', async t => {
@@ -178,13 +192,13 @@ test('idle and absolute session expiry invalidate sessions and all associated se
   assert.equal((await request('/api/session', undefined, { cookie: active + '; ' + active })).data.session, null);
 });
 
-test('production requires real or trusted-proxy HTTPS and issues host-only secure session cookies', async t => {
+test('production recognises HTTPS behind one proxy and issues host-only secure session cookies', async t => {
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = 'production';
   t.after(() => { if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous; });
   assert.throws(() => createApp({ database: ':memory:', base: 'http://localhost:3000' }), /HTTPS/);
   assert.throws(() => createApp({ database: ':memory:', base: 'https://secure.example', trustProxy: true }), /TRUST_PROXY/);
-  const { request } = await setup(t, { base: 'https://secure.example', trustProxy: 'loopback' });
+  const { request } = await setup(t, { base: 'https://secure.example' });
   assert.equal((await request('/api/session')).status, 400);
   const headers = { 'X-Forwarded-Proto': 'https' };
   const login = await request('/api/login', { email: 'member@example.com', password }, { headers });
@@ -196,6 +210,6 @@ test('production requires real or trusted-proxy HTTPS and issues host-only secur
   assert.match(login.headers.get('strict-transport-security'), /max-age=31536000/);
   assert.equal((await request('/api/session', undefined, { cookie: login.cookie, headers })).data.user.id, 1);
   assert.equal((await request('/api/session', undefined, { cookie: login.cookie.replace('__Host-ck_session=', 'ck_session='), headers })).data.session, null);
-  const untrusted = await setup(t, { base: 'https://untrusted.example' });
+  const untrusted = await setup(t, { base: 'https://untrusted.example', trustProxy: '192.0.2.1' });
   assert.equal((await untrusted.request('/api/session', undefined, { headers })).status, 400, 'untrusted forwarded proto cannot bypass HTTPS');
 });
