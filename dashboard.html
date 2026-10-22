@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+  <script src="/accessibility.js"></script>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Your personalised CareerKraft career roadmap."
+  >
+
+  <title>Your career dashboard | CareerKraft</title>
+
+
+  <!-- =====================================
+       THEME
+  ====================================== -->
+
+  <script>
+
+    document.documentElement.dataset.theme =
+      localStorage.getItem("careerkraft-theme") === "dark"
+        ? "dark"
+        : "light";
+
+  </script>
+
+
+  <link
+    rel="stylesheet"
+    href="dashboard.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="lumia-widget.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="cursor.css"
+  >
+
+
+  <script
+    src="cursor.js"
+    defer
+  ></script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="dashboard-tour.css">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
+</head>
+
+
+<body>
+
+
+  <!-- =====================================
+       APP
+  ====================================== -->
+
+  <div class="dashboard-app">
+
+
+    <!-- =====================================
+         SIDEBAR
+    ====================================== -->
+
+    <aside class="dashboard-sidebar">
+
+
+      <a
+        href="index.html"
+        class="dashboard-brand"
+      >
+
+        <div class="dashboard-logo"><img src="assets/logo.png" alt="" width="44" height="44"></div>
+
+        <span>
+          CareerKraft
+        </span>
+
+      </a>
+
+
+
+      <span class="sidebar-label">WORKSPACE</span><nav
+        class="dashboard-navigation"
+        aria-label="Dashboard navigation"
+      >
+
+
+        <a
+          href="dashboard.html"
+          class="dashboard-nav-item active"
+          aria-current="page"
+        >
+
+          <span class="nav-icon">
+            ◫
+          </span>
+
+          <span>
+            Dashboard
+          </span>
+
+        </a>
+
+
+        <a
+          href="#roadmap"
+          class="dashboard-nav-item"
+        >
+
+          <span class="nav-icon">
+            ◉
+          </span>
+
+          <span>
+            My roadmap
+          </span>
+
+        </a>
+
+
+        <button
+          type="button"
+          class="dashboard-nav-item"
+          id="career-explore-button"
+        >
+
+          <span class="nav-icon">
+            ↗
+          </span>
+
+          <span>
+            Explore career
+          </span>
+
+        </button>
+
+
+        <a href="#skills" class="dashboard-nav-item" id="skills-nav-link">
+
+          <span class="nav-icon">
+            ✦
+          </span>
+
+          <span>
+            Skills
+          </span>
+
+        </a>
+
+
+      </nav>
+
+
+
+      <div class="dashboard-sidebar-bottom">
+
+        <a class="dashboard-nav-item" href="settings.html"><span class="nav-icon" aria-hidden="true">&#9881;</span><span>Account settings</span></a>
+
+
+        <button
+          type="button"
+          class="theme-button dashboard-theme-button"
+          id="dashboard-theme-toggle"
+          aria-label="Switch to dark mode"
+          title="Switch to dark mode"
+          aria-pressed="false"
+        >
+
+          <svg class="dashboard-theme-icon dashboard-theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+          </svg>
+          <svg class="dashboard-theme-icon dashboard-theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"></path>
+          </svg>
+
+          <span>
+            Theme
+          </span>
+
+        </button>
+
+
+        <button
+          type="button"
+          class="logout-button"
+          id="dashboard-logout-button"
+        >
+
+          ↪
+
+          <span>
+            Log out
+          </span>
+
+        </button>
+
+
+      </div>
+
+
+    </aside>
+
+
+
+    <!-- =====================================
+         MAIN
+    ====================================== -->
+
+    <main class="dashboard-main">
+
+
+      <!-- =====================================
+           STATUS
+      ====================================== -->
+
+      <div
+        id="dashboard-status"
+        class="dashboard-status"
+        role="status"
+        aria-live="polite"
+        hidden
+      ></div>
+
+
+
+      <!-- =====================================
+           TOP BAR
+      ====================================== -->
+
+<header class="dashboard-topbar"><div class="toolbar-title"><span aria-hidden="true">&#9638;</span> &nbsp; My dashboard</div><div class="dashboard-top-actions"><button id="dashboard-tour-launch" class="dashboard-tour-launch" type="button" disabled>Dashboard tour</button><a href="#roadmap" class="toolbar-link">View roadmap <span aria-hidden="true">&#8599;</span></a><a class="profile-avatar" href="settings.html" aria-label="Open account settings"><span id="dashboard-avatar">C</span></a></div></header><div class="dashboard-workspace"><div class="dashboard-primary">
+
+
+
+      <!-- =====================================
+           CAREER HERO
+      ====================================== -->
+
+      <section class="career-dashboard-hero">
+
+
+        <div class="career-dashboard-copy">        <div>
+
+          <span class="dashboard-eyebrow">
+            YOUR CAREER JOURNEY
+          </span>
+
+          <h1>
+
+            Welcome back,
+            <span id="dashboard-name">
+              there
+            </span>.
+
+          </h1>
+
+        </div>
+
+
+
+
+
+          <span class="section-label">
+            YOUR CHOSEN CAREER
+          </span>
+
+
+          <h2 id="dashboard-career-title">
+            Loading your career...
+          </h2>
+
+
+          <p>
+
+            You're not expected to know everything
+            yet. CareerKraft will help you move
+            through this journey one step at a time.
+
+          </p>
+
+
+          <div class="career-dashboard-actions">
+
+
+            <button
+              type="button"
+              id="view-career-button"
+              class="secondary-button"
+            >
+              Explore this career →
+            </button>
+
+
+          </div>
+
+
+        </div>
+
+
+
+        <!-- =================================
+             PROGRESS RING
+        ================================== -->
+
+<svg class="welcome-art" viewBox="0 0 240 170" aria-hidden="true"><circle cx="146" cy="79" r="70" fill="#edf4ff"/><path d="M92 134h137" stroke="#9ab6dc" stroke-width="3"/><rect x="105" y="42" width="110" height="75" rx="5" fill="#6c9fea"/><rect x="112" y="49" width="96" height="60" rx="2" fill="#fff"/><path d="M163 117v15m-24 0h48" stroke="#4d80cd" stroke-width="6"/><rect x="123" y="61" width="26" height="35" rx="3" fill="#dce9fc"/><path d="M159 67h36m-36 10h27m-27 10h33" stroke="#9ab6dc" stroke-width="4"/><rect x="45" y="126" width="74" height="11" rx="4" fill="#ffad42"/><rect x="52" y="115" width="70" height="11" rx="4" fill="#80d0c5"/><circle cx="79" cy="78" r="11" fill="#efb18c"/><path d="M67 74q0-20 19-9l6 14-14-6" fill="#203b65"/><path d="M70 90q-16 11-12 27h39L88 92" fill="#ff9840"/><path d="M86 94l15 14 19-10" fill="none" stroke="#efb18c" stroke-width="7" stroke-linecap="round"/></svg>      </section>
+
+
+
+      <!-- =====================================
+           QUICK STATS
+      ====================================== -->
+
+<div class="overview-grid"><section class="dashboard-stats" aria-label="Roadmap overview"><h2>Your overview</h2>
+
+
+        <article class="dashboard-stat-card">
+
+          <span class="stat-icon">
+            ◫
+          </span>
+
+          <div>
+
+            <small>
+              ROADMAP PHASES
+            </small>
+
+            <strong id="phase-count">
+              —
+            </strong>
+
+          </div>
+
+        </article>
+
+
+        <article class="dashboard-stat-card">
+
+          <span class="stat-icon">
+            ◷
+          </span>
+
+          <div>
+
+            <small>
+              TOTAL LEARNING TIME
+            </small>
+
+            <strong id="roadmap-total-time">
+              —
+            </strong>
+
+          </div>
+
+        </article>
+
+
+        <article class="dashboard-stat-card">
+
+          <span class="stat-icon">
+            ✓
+          </span>
+
+          <div>
+
+            <small>
+              COMPLETED
+            </small>
+
+            <strong id="dashboard-completed">—</strong>
+
+          </div>
+
+        </article>
+
+
+        <article class="dashboard-stat-card">
+
+          <span class="stat-icon">
+            ◈
+          </span>
+
+          <div>
+
+            <small>
+              PROOF ACTIVITIES
+            </small>
+
+            <strong id="evidence-step-count">
+              —
+            </strong>
+
+          </div>
+
+        </article>
+
+
+      </section>
+
+
+
+      <!-- =====================================
+           NEXT STEP
+      ====================================== -->
+
+<section class="progress-panel"><h2>Roadmap progress</h2>        <div class="career-progress-card">
+
+
+          <div class="progress-ring">
+
+
+            <svg
+              viewBox="0 0 120 120"
+              aria-hidden="true"
+            >
+
+              <circle
+                class="progress-ring-background"
+                cx="60"
+                cy="60"
+                r="52"
+              ></circle>
+
+
+              <circle
+                class="progress-ring-value"
+                id="roadmap-progress-ring"
+                cx="60"
+                cy="60"
+                r="52"
+              ></circle>
+
+
+            </svg>
+
+
+            <div class="progress-ring-content">
+
+              <strong id="roadmap-progress-percent">—</strong>
+
+              <span>
+                complete
+              </span>
+
+            </div>
+
+
+          </div>
+
+
+          <div class="progress-card-copy">
+
+            <strong>
+              Your roadmap progress
+            </strong>
+
+            <span>
+
+              <span id="completed-step-count">—</span>
+
+              /
+
+              <span id="total-step-count">—</span>
+
+              steps complete
+
+            </span>
+
+          </div>
+
+
+        </div>
+
+
+<div class="progress-legend"><span>&#9679; Completed</span><span>&#9679; Remaining</span></div></section></div><section class="next-step-section">
+
+
+        <div class="section-heading-row">
+
+
+          <div>
+
+            <span class="dashboard-eyebrow">
+              CONTINUE YOUR JOURNEY
+            </span>
+
+            <h2>
+              Your next step
+            </h2>
+
+          </div>
+
+
+          <span
+            class="activity-badge"
+            id="next-step-type"
+          >
+            Learning
+          </span>
+
+
+        </div>
+
+
+
+        <article class="next-step-card">
+
+
+          <div class="next-step-number">
+
+            <span>
+              NEXT
+            </span>
+
+            <strong>
+              →
+            </strong>
+
+          </div>
+
+
+
+          <div class="next-step-content">
+
+
+            <h3 id="next-step-title">
+              Loading your next step...
+            </h3>
+
+
+            <p id="next-step-description">
+
+              CareerKraft is preparing your
+              personalised roadmap.
+
+            </p>
+
+
+
+            <div class="next-step-meta">
+
+
+              <span>
+
+                ◷
+
+                <strong id="next-step-time">
+                  —
+                </strong>
+
+              </span>
+
+
+              <span
+                id="next-step-evidence"
+                hidden
+              >
+
+                ◈
+
+                Evidence required
+
+              </span>
+
+
+            </div>
+
+
+          </div>
+
+
+
+          <button
+            type="button"
+            class="primary-button"
+            id="start-next-step-button"
+            disabled
+          >
+
+            Start this step →
+
+          </button>
+
+
+        </article>
+
+
+      </section>
+
+
+
+      <!-- =====================================
+           ROADMAP
+      ====================================== -->
+
+      <section
+        class="roadmap-section"
+        id="roadmap"
+      >
+
+
+        <div class="section-heading-row">
+
+
+          <div>
+
+            <span class="dashboard-eyebrow">
+              YOUR ROADMAP
+            </span>
+
+            <h2>
+              Here's how you move forward.
+            </h2>
+
+          </div>
+
+
+          <span class="roadmap-step-counter">
+
+            <strong id="roadmap-counter-completed">—</strong>
+
+            /
+
+            <span id="roadmap-counter-total">—</span>
+
+            complete
+
+          </span>
+
+
+        </div>
+
+
+
+        <!-- ========================================
+             CAREER JOURNEY LEVELS
+        ========================================= -->
+        <section class="roadmap-level-card" id="roadmap-level-card">
+          <div class="roadmap-level-header">
+            <div>
+              <span class="roadmap-level-eyebrow">YOUR CAREER JOURNEY</span>
+              <h2>Build your skills step by step</h2>
+              <p>Complete each level to unlock the next stage of your pathway.</p>
+            </div>
+            <div class="roadmap-current-level-badge" id="roadmap-current-level-badge">Loading level…</div>
+          </div>
+
+          <!-- LEVEL PROGRESS -->
+          <div class="roadmap-levels" id="roadmap-levels">
+            <!-- BEGINNER -->
+            <article class="roadmap-level-item" id="roadmap-level-beginner" data-level="beginner">
+              <div class="roadmap-level-icon">
+                <span class="roadmap-level-icon-text" id="roadmap-level-beginner-icon">1</span>
+              </div>
+              <div class="roadmap-level-content">
+                <div class="roadmap-level-title-row">
+                  <div><span class="roadmap-level-number">LEVEL 1</span><h3>Beginner</h3></div>
+                  <span class="roadmap-level-status" id="roadmap-level-beginner-status">Current</span>
+                </div>
+                <p class="roadmap-level-description">Build the foundations and try your first practical activities.</p>
+                <div class="roadmap-level-progress-row">
+                  <div class="roadmap-level-progress"><div class="roadmap-level-progress-fill" id="roadmap-level-beginner-progress"></div></div>
+                  <span class="roadmap-level-progress-text" id="roadmap-level-beginner-progress-text">—</span>
+                </div>
+              </div>
+            </article>
+            <div class="roadmap-level-connector" aria-hidden="true"><span></span></div>
+
+            <!-- INTERMEDIATE -->
+            <article class="roadmap-level-item locked" id="roadmap-level-intermediate" data-level="intermediate">
+              <div class="roadmap-level-icon">
+                <span class="roadmap-level-icon-text" id="roadmap-level-intermediate-icon">&#128274;</span>
+              </div>
+              <div class="roadmap-level-content">
+                <div class="roadmap-level-title-row">
+                  <div><span class="roadmap-level-number">LEVEL 2</span><h3>Intermediate</h3></div>
+                  <span class="roadmap-level-status" id="roadmap-level-intermediate-status">Locked</span>
+                </div>
+                <p class="roadmap-level-description">Apply your knowledge through more realistic challenges and projects.</p>
+                <div class="roadmap-level-progress-row">
+                  <div class="roadmap-level-progress"><div class="roadmap-level-progress-fill" id="roadmap-level-intermediate-progress"></div></div>
+                  <span class="roadmap-level-progress-text" id="roadmap-level-intermediate-progress-text">—</span>
+                </div>
+              </div>
+            </article>
+            <div class="roadmap-level-connector" aria-hidden="true"><span></span></div>
+
+            <!-- ADVANCED -->
+            <article class="roadmap-level-item locked" id="roadmap-level-advanced" data-level="advanced">
+              <div class="roadmap-level-icon">
+                <span class="roadmap-level-icon-text" id="roadmap-level-advanced-icon">&#128274;</span>
+              </div>
+              <div class="roadmap-level-content">
+                <div class="roadmap-level-title-row">
+                  <div><span class="roadmap-level-number">LEVEL 3</span><h3>Advanced</h3></div>
+                  <span class="roadmap-level-status" id="roadmap-level-advanced-status">Locked</span>
+                </div>
+                <p class="roadmap-level-description">Complete industry-style challenges and build portfolio-quality work.</p>
+                <div class="roadmap-level-progress-row">
+                  <div class="roadmap-level-progress"><div class="roadmap-level-progress-fill" id="roadmap-level-advanced-progress"></div></div>
+                  <span class="roadmap-level-progress-text" id="roadmap-level-advanced-progress-text">—</span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <!-- LEVEL MESSAGE -->
+          <div class="roadmap-level-message" id="roadmap-level-message">
+            <div class="roadmap-level-message-icon">&#10022;</div>
+            <div>
+              <strong id="roadmap-level-message-title">Loading your pathway</strong>
+              <p id="roadmap-level-message-text">Your saved activity progress will appear here.</p>
+            </div>
+          </div>
+        </section>
+
+        <!--
+          dashboard.js will dynamically
+          insert all roadmap phases here.
+        -->
+
+        <div
+          class="roadmap-phases"
+          id="roadmap-phases"
+        >
+
+
+          <div class="roadmap-loading">
+
+            <span class="loading-dot"></span>
+            <span class="loading-dot"></span>
+            <span class="loading-dot"></span>
+
+            <p>
+              Loading your roadmap...
+            </p>
+
+          </div>
+
+
+        </div>
+
+
+      </section>
+
+
+
+      <!-- =====================================
+           JOURNEY MESSAGE
+      ====================================== -->
+
+      <!-- =====================================
+           VERIFIED SKILLS
+      ====================================== -->
+      <section class="dashboard-card skills-card" id="verified-skills-card">
+        <div class="skills-card-header">
+          <div>
+            <span class="dashboard-eyebrow">VERIFIED SKILLS</span>
+            <h2 id="skills">Skills you've proved</h2>
+            <p>Skills verified through your completed CareerKraft activities.</p>
+          </div>
+          <div class="skills-summary">
+            <strong id="skills-total">—</strong>
+            <span>verified skills</span>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="skills-empty" id="skills-empty">
+          <div class="skills-empty-icon">✦</div>
+          <div>
+            <strong>Your verified skills will appear here</strong>
+            <p>Complete evidence-based activities and let Lumia verify the skills you demonstrate.</p>
+          </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="skills-list" id="skills-list" hidden></div>
+        <div class="skills-card-footer" id="skills-card-footer" hidden>
+          <span id="skills-verification-total">0 activity verifications</span>
+          <button type="button" class="skills-view-button" id="view-all-skills-button">View skills profile →</button>
+        </div>
+      </section>
+
+      <section class="journey-message">
+
+
+        <span class="dashboard-eyebrow">
+          CAREERKRAFT
+        </span>
+
+
+        <h2>
+          You don't need to figure out your whole future today.
+        </h2>
+
+
+        <p>
+          Just focus on the next useful step.
+          Your roadmap will grow with you as
+          you learn, build and prove new skills.
+        </p>
+
+
+      </section>
+
+
+</div><aside class="dashboard-right" aria-label="Journey planner"><section class="calendar-panel"><div class="calendar-heading"><h2 id="calendar-month"></h2><div><button id="calendar-prev" type="button" aria-label="Previous month">&#8249;</button><button id="calendar-next" type="button" aria-label="Next month">&#8250;</button></div></div><div class="calendar-weekdays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div id="dashboard-calendar" class="calendar-days" aria-label="Calendar"></div><p class="calendar-caption">A little progress, every day.</p></section><section class="planner-lessons"><div class="planner-heading"><h2>Your journey</h2><a href="#roadmap">View all</a></div><a class="lesson-card" href="#roadmap"><span class="lesson-label">LEARN &amp; EXPLORE</span><h3>Build your foundations</h3><p>Follow your personalised roadmap and discover what comes next.</p><span class="lesson-footer">One step at a time <b aria-hidden="true">&#8599;</b></span></a><a class="lesson-card blue" href="#next-step-title"><span class="lesson-label">PUT IT INTO PRACTICE</span><h3>Make your next move</h3><p>Learn, build and collect evidence of your growing skills.</p><span class="lesson-footer">Keep moving forward <b aria-hidden="true">&#8599;</b></span></a></section></aside></div></main>
+
+
+  </div>
+
+
+
+  <!-- ========================================
+       SKILL DETAIL DRAWER
+  ========================================= -->
+  <div class="skill-detail-backdrop" id="skill-detail-backdrop" aria-hidden="true" hidden></div>
+
+  <dialog
+    class="skill-detail-drawer"
+    id="skill-detail-drawer"
+    aria-labelledby="skill-detail-name"
+    aria-describedby="skill-detail-summary"
+  >
+    <div class="skill-detail-panel">
+
+      <!-- TOP BAR -->
+      <div class="skill-detail-topbar">
+        <form method="dialog" class="skill-detail-close-form">
+          <button
+            type="submit"
+            class="skill-detail-close"
+            id="skill-detail-close"
+            aria-label="Close skill details"
+            autofocus
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Loading state -->
+      <div class="skill-detail-loading" id="skill-detail-loading" role="status" aria-live="polite" aria-atomic="true">
+        <span class="skill-detail-loading-orb" aria-hidden="true">&#10022;</span>
+        <p>Loading verification history...</p>
+      </div>
+
+      <!-- Error state -->
+      <section class="skill-detail-error" id="skill-detail-error" role="alert" hidden>
+        <h3>We couldn't load this skill</h3>
+        <p id="skill-detail-error-message">Please try loading the verification history again.</p>
+        <button type="button" class="skill-detail-retry" id="skill-detail-retry">Try again</button>
+      </section>
+
+      <!-- Filled with the selected skill's saved verification data. -->
+      <div class="skill-detail-content" id="skill-detail-content" hidden>
+        <!-- HERO -->
+        <header class="skill-detail-hero">
+          <div class="skill-detail-orb" aria-hidden="true"><span>&#10022;</span></div>
+          <span class="skill-detail-eyebrow">VERIFIED SKILL</span>
+          <h2 id="skill-detail-name">Skill details</h2>
+          <p class="skill-detail-summary" id="skill-detail-summary">
+            Demonstrated through your CareerKraft activities.
+          </p>
+
+          <div class="skill-detail-stats">
+            <div class="skill-detail-stat">
+              <strong id="skill-detail-verification-count">0</strong>
+              <span>verifications</span>
+            </div>
+            <div class="skill-detail-stat">
+              <strong id="skill-detail-highest-level">&mdash;</strong>
+              <span>evidence depth</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- EVIDENCE DEPTH -->
+        <section class="skill-detail-section" aria-labelledby="skill-depth-title">
+          <div class="skill-detail-section-heading">
+            <div>
+              <span class="skill-detail-section-label">DEVELOPMENT</span>
+              <h3 id="skill-depth-title">Evidence depth</h3>
+            </div>
+          </div>
+
+          <p class="skill-depth-explanation">
+            This shows the highest CareerKraft roadmap level where you've demonstrated this skill.
+          </p>
+
+          <div class="skill-depth-levels">
+            <article class="skill-depth-level" id="skill-depth-beginner">
+              <div class="skill-depth-icon" aria-hidden="true">1</div>
+              <div class="skill-depth-main">
+                <div class="skill-depth-heading">
+                  <strong>Beginner</strong>
+                  <span id="skill-depth-beginner-count">0 demonstrations</span>
+                </div>
+                <div class="skill-depth-bar" aria-hidden="true">
+                  <span id="skill-depth-beginner-bar"></span>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-depth-level" id="skill-depth-intermediate">
+              <div class="skill-depth-icon" aria-hidden="true">2</div>
+              <div class="skill-depth-main">
+                <div class="skill-depth-heading">
+                  <strong>Intermediate</strong>
+                  <span id="skill-depth-intermediate-count">0 demonstrations</span>
+                </div>
+                <div class="skill-depth-bar" aria-hidden="true">
+                  <span id="skill-depth-intermediate-bar"></span>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-depth-level" id="skill-depth-advanced">
+              <div class="skill-depth-icon" aria-hidden="true">3</div>
+              <div class="skill-depth-main">
+                <div class="skill-depth-heading">
+                  <strong>Advanced</strong>
+                  <span id="skill-depth-advanced-count">0 demonstrations</span>
+                </div>
+                <div class="skill-depth-bar" aria-hidden="true">
+                  <span id="skill-depth-advanced-bar"></span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="skill-depth-note">
+            <span aria-hidden="true">&#9432;</span>
+            <p>
+              Evidence depth reflects the CareerKraft activity level where this skill was demonstrated.
+              It is not a professional certification or formal proficiency rating.
+            </p>
+          </div>
+        </section>
+
+        <!-- VERIFIED THROUGH -->
+        <section class="skill-detail-section" aria-labelledby="skill-detail-history-title">
+          <div class="skill-detail-section-heading">
+            <div>
+              <span class="skill-detail-section-label">PROOF</span>
+              <h3 id="skill-detail-history-title">Verified through</h3>
+            </div>
+            <span class="skill-history-count" id="skill-history-count">0 activities</span>
+          </div>
+
+          <ol class="skill-verification-history" id="skill-verification-history"></ol>
+
+          <div class="skill-history-empty" id="skill-history-empty" hidden>
+            <div aria-hidden="true">&#10022;</div>
+            <strong>No verification history yet</strong>
+            <p>Complete CareerKraft activities to build evidence for this skill.</p>
+          </div>
+        </section>
+
+        <!-- SKILL TIMELINE -->
+        <section class="skill-detail-section skill-detail-dates" aria-label="Skill verification dates">
+          <div class="skill-detail-date">
+            <span>FIRST VERIFIED</span>
+            <strong><time id="skill-first-verified">&mdash;</time></strong>
+          </div>
+          <div class="skill-detail-date">
+            <span>LAST VERIFIED</span>
+            <strong><time id="skill-last-verified">&mdash;</time></strong>
+          </div>
+        </section>
+
+        <!-- LUMIA INSIGHT -->
+        <section class="skill-lumia-card" aria-labelledby="skill-lumia-title">
+          <div class="skill-lumia-icon" aria-hidden="true">&#10022;</div>
+          <div>
+            <span>LUMIA INSIGHT</span>
+            <h3 id="skill-lumia-title">Keep building this skill</h3>
+            <p id="skill-lumia-message">
+              As you complete more challenging activities, CareerKraft will build a stronger
+              evidence history for this skill.
+            </p>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </dialog>
+
+  <!-- One history entry per approved activity; populated with textContent. -->
+  <template id="skill-verification-template">
+    <li class="skill-verification-item">
+      <article class="skill-verification-card">
+        <span class="skill-verification-marker" aria-hidden="true">&#10003;</span>
+        <div class="skill-verification-main">
+          <header class="skill-verification-header">
+            <h4 data-verification-activity-title></h4>
+            <p class="skill-verification-career" data-verification-career></p>
+            <ul class="skill-verification-meta" aria-label="Activity details">
+              <li data-verification-level></li>
+              <li data-verification-activity-type></li>
+              <li><time data-verification-date></time></li>
+            </ul>
+          </header>
+
+          <section class="skill-verification-evidence">
+            <h5>Evidence</h5>
+            <a class="skill-verification-file" data-verification-file-link hidden>Open uploaded work</a>
+            <details class="skill-verification-written-work" data-verification-written-work hidden>
+              <summary>Read written response</summary>
+              <p data-verification-written-text></p>
+            </details>
+            <p data-verification-evidence-unavailable hidden>Evidence details are unavailable.</p>
+          </section>
+
+          <section class="skill-verification-review" data-verification-review hidden>
+            <h5>Review feedback</h5>
+            <blockquote><p data-verification-feedback></p></blockquote>
+          </section>
+        </div>
+      </article>
+    </li>
+  </template>
+
+  <!-- =====================================
+       SCRIPTS
+  ====================================== -->
+
+  <!-- ========================================
+       ROADMAP LEVEL TRANSITION
+  ========================================= -->
+  <div class="level-transition-overlay" id="level-transition-overlay" aria-hidden="true" hidden>
+    <div class="level-transition-panel">
+      <!-- COMPLETION STATE -->
+      <div class="level-transition-stage" id="level-complete-stage">
+        <div class="level-complete-icon">&#10003;</div>
+        <span class="level-transition-eyebrow">LEVEL COMPLETE</span>
+        <h2 id="level-complete-title">Beginner complete</h2>
+        <p id="level-complete-message">You completed every activity in this level.</p>
+      </div>
+
+      <!-- LUMIA GENERATION STATE -->
+      <div class="level-transition-stage hidden" id="level-generating-stage" hidden>
+        <div class="level-lumia-orb">
+          <div class="level-lumia-ring ring-one"></div>
+          <div class="level-lumia-ring ring-two"></div>
+          <div class="level-lumia-ring ring-three"></div>
+          <div class="level-lumia-core">&#10022;</div>
+        </div>
+        <span class="level-transition-eyebrow">LUMIA</span>
+        <h2 id="level-generating-title">Building your next pathway</h2>
+        <p id="level-generating-message" aria-live="polite">Looking at the skills you developed...</p>
+        <div class="level-generation-progress">
+          <div class="level-generation-progress-fill" id="level-generation-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- NEXT LEVEL READY -->
+      <div class="level-transition-stage hidden" id="level-ready-stage" hidden>
+        <div class="level-ready-icon">&#10022;</div>
+        <span class="level-transition-eyebrow">YOUR PATH CONTINUES</span>
+        <h2 id="level-ready-title">Intermediate unlocked</h2>
+        <p id="level-ready-message">Lumia has created your next personalised level using your progress and verified skills.</p>
+        <div class="level-ready-summary" id="level-ready-summary">
+          <div><strong id="level-ready-step-count">7</strong><span>new activities</span></div>
+          <div><strong>&#10022;</strong><span>Lumia personalised</span></div>
+        </div>
+        <button type="button" class="level-ready-button" id="level-ready-button">Start Intermediate &#8594;</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="level-complete-sound" src="assets/universfield-level-up-08-402152.mp3" preload="auto"></audio>
+  <script src="auth-api.js"></script>
+  <script src="dashboard-tour.js"></script>
+
+  <script src="dashboard.js"></script>
+  <script src="lumia-widget.js"></script>
+
+
+
+  <footer class="site-footer"><p>&copy; <span data-current-year>2026</span> CareerKraft</p><nav aria-label="Footer navigation"><a href="/index.html">Home</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/terms.html#contact">Contact</a></nav></footer>
+
+</body>
+
+</html>

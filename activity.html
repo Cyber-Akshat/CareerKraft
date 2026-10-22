@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+  <script src="/accessibility.js"></script>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Complete your CareerKraft roadmap activity."
+  >
+
+  <title>Your roadmap activity | CareerKraft</title>
+
+
+  <script>
+
+    document.documentElement.dataset.theme =
+      localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+
+  </script>
+
+
+  <link
+    rel="stylesheet"
+    href="activity.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="lumia-widget.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="cursor.css"
+  >
+
+
+  <script
+    src="cursor.js"
+    defer
+  ></script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
+</head>
+
+
+<body>
+
+
+  <main class="activity-app">
+
+
+    <!-- =====================================
+         TOP BAR
+    ====================================== -->
+
+    <header class="activity-topbar">
+
+
+      <button
+        type="button"
+        class="back-button"
+        id="activity-back-button"
+      >
+        ← Back to roadmap
+      </button>
+
+
+      <div class="activity-top-actions">
+
+
+        <button
+          type="button"
+          id="activity-theme-toggle"
+          class="theme-button"
+          aria-label="Switch theme"
+        >
+<svg class="activity-theme-icon activity-theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+          </svg>
+          <svg class="activity-theme-icon activity-theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"></path>
+          </svg>
+</button>
+
+
+        <div
+          class="activity-avatar"
+          id="activity-avatar"
+        >
+          C
+        </div>
+
+
+      </div>
+
+
+    </header>
+
+
+
+    <!-- =====================================
+         STATUS
+    ====================================== -->
+
+    <div
+      id="activity-status"
+      class="activity-status"
+      role="status"
+      aria-live="polite"
+      hidden
+    ></div>
+
+
+
+    <!-- =====================================
+         HERO
+    ====================================== -->
+
+    <section class="activity-hero">
+
+
+      <div class="activity-hero-copy">
+
+
+        <span
+          class="activity-career"
+          id="activity-career"
+        >
+          Loading career...
+        </span>
+
+
+        <div class="activity-step-meta">
+
+
+          <span id="activity-phase">
+            Phase —
+          </span>
+
+
+          <span>
+            ·
+          </span>
+
+
+          <span id="activity-step-number">
+            Step —
+          </span>
+
+
+        </div>
+
+
+        <h1 id="activity-title">
+          Loading activity...
+        </h1>
+
+
+        <p
+          class="activity-description"
+          id="activity-description"
+        >
+          CareerKraft is preparing your next step.
+        </p>
+
+
+        <div class="activity-badges">
+
+
+          <span
+            class="activity-badge"
+            id="activity-type"
+          >
+            Activity
+          </span>
+
+
+          <span
+            class="activity-badge"
+            id="activity-time"
+          >
+            —
+          </span>
+
+
+          <span
+            class="activity-badge evidence"
+            id="activity-evidence-badge"
+            hidden
+          >Loading requirements…</span>
+
+
+        </div>
+
+
+      </div>
+
+
+      <div class="activity-progress-panel">
+
+
+        <small>
+          ACTIVITY STATUS
+        </small>
+
+
+        <strong id="activity-status-label">Loading…</strong>
+
+
+        <div class="activity-status-line">
+
+          <span
+            id="activity-status-dot"
+            class="activity-status-dot"
+          ></span>
+
+
+          <span id="activity-status-text">Checking your saved activity progress.</span>
+
+
+        </div>
+
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- =====================================
+         CONTENT
+    ====================================== -->
+
+    <section class="activity-content-grid">
+
+
+      <!-- =================================
+           MAIN CONTENT
+      ================================== -->
+
+      <article class="activity-main-card">
+
+
+        <span class="section-label">
+          YOUR ACTIVITY
+        </span>
+
+
+        <h2>
+          What to do
+        </h2>
+
+
+        <p
+          id="activity-task-intro"
+          class="activity-task-intro"
+        >
+          Follow the activity below and take your time.
+        </p>
+
+
+
+        <!-- =================================
+             LEARNING CONTENT
+        ================================== -->
+
+        <div id="module-content-status" class="module-content-status" role="status" hidden></div>
+        <button type="button" id="module-content-retry" class="secondary-button" hidden>Try preparing the module again</button>
+        <!-- ========================================
+             LUMIA MODULE CONTENT
+        ========================================= -->
+        <section class="module-learning" id="module-learning">
+          <!-- MODULE GENERATION / LOADING -->
+          <div class="module-loading" id="module-loading" hidden>
+            <div class="module-loading-orb">
+              <div class="module-liquid-ring module-ring-one"></div>
+              <div class="module-liquid-ring module-ring-two"></div>
+              <div class="module-liquid-ring module-ring-three"></div>
+              <div class="module-liquid-core"><span>&#10022;</span></div>
+            </div>
+            <div>
+              <span class="module-eyebrow">LUMIA</span>
+              <h2>Preparing your module</h2>
+              <p id="module-loading-message" aria-live="polite">Building your learning experience...</p>
+              <button type="button" id="module-sound-button" class="secondary-button" hidden>Enable Lumia sound</button>
+            </div>
+          </div>
+
+          <!-- GENERATED MODULE -->
+          <div class="module-content hidden" id="module-content" hidden>
+            <!-- INTRODUCTION -->
+            <section class="module-block module-introduction">
+              <span class="module-eyebrow">ABOUT THIS MODULE</span>
+              <div class="module-intro-text" id="module-introduction"></div>
+            </section>
+
+            <!-- WHAT YOU'LL LEARN -->
+            <section class="module-block">
+              <div class="module-section-heading">
+                <div class="module-section-icon">01</div>
+                <div><span class="module-section-label">LEARN</span><h2>What you'll learn</h2></div>
+              </div>
+              <ul class="module-objectives" id="module-learning-objectives"></ul>
+            </section>
+
+            <!-- KEY CONCEPTS -->
+            <section class="module-block">
+              <div class="module-section-heading">
+                <div class="module-section-icon">02</div>
+                <div><span class="module-section-label">UNDERSTAND</span><h2>Key concepts</h2></div>
+              </div>
+              <div class="module-concepts" id="module-key-concepts"></div>
+            </section>
+
+            <!-- STUDY RESOURCES -->
+            <section class="module-block hidden" id="module-resources-section" hidden>
+              <div class="module-section-heading">
+                <div class="module-section-icon">03</div>
+                <div><span class="module-section-label">STUDY</span><h2>Recommended resources</h2></div>
+              </div>
+              <p class="module-resources-intro">Lumia selected these resources to help you understand the concepts used in this activity.</p>
+              <div class="module-resources" id="module-resources">
+                <!-- Filled by activity.js -->
+              </div>
+            </section>
+
+            <!-- REAL-WORLD EXAMPLE -->
+            <section class="module-block">
+              <div class="module-section-heading">
+                <div class="module-section-icon">04</div>
+                <div><span class="module-section-label">SEE IT IN CONTEXT</span><h2>Example</h2></div>
+              </div>
+              <article class="module-example-card">
+                <span class="module-example-label">SCENARIO</span>
+                <h3 id="module-example-title"></h3>
+                <div class="module-example-scenario" id="module-example-scenario"></div>
+                <div class="module-walkthrough">
+                  <strong>How you could approach it</strong>
+                  <div id="module-example-walkthrough"></div>
+                </div>
+              </article>
+            </section>
+
+            <!-- YOUR TASK -->
+            <section class="module-block module-task-block" id="module-task-block">
+              <div class="module-section-heading">
+                <div class="module-section-icon">05</div>
+                <div><span class="module-section-label">YOUR TURN</span><h2>Your task</h2></div>
+              </div>
+              <article class="module-task-card">
+                <div class="module-task-marker">&#10022;</div>
+                <div><h3 id="module-task-title">Your activity</h3><div id="module-task-instructions"></div></div>
+              </article>
+            </section>
+
+            <!-- VERIFICATION CRITERIA -->
+            <section class="module-block" id="module-criteria-section">
+              <div class="module-section-heading">
+                <div class="module-section-icon">06</div>
+                <div><span class="module-section-label">SUCCESS CRITERIA</span><h2>What Lumia will look for</h2></div>
+              </div>
+              <div class="module-criteria-card">
+                <p class="module-criteria-intro">If this activity requires evidence, Lumia will review your work against these criteria.</p>
+                <ul class="module-criteria-list" id="module-verification-criteria"></ul>
+              </div>
+            </section>
+
+            <!-- SKILLS -->
+            <section class="module-block">
+              <div class="module-section-heading">
+                <div class="module-section-icon">07</div>
+                <div><span class="module-section-label">BUILD</span><h2>Skills you can demonstrate</h2></div>
+              </div>
+              <div class="module-skill-list" id="module-target-skills"></div>
+            </section>
+
+            <!-- REFLECTION -->
+            <section class="module-block">
+              <div class="module-section-heading">
+                <div class="module-section-icon">08</div>
+                <div><span class="module-section-label">REFLECT</span><h2>Think about it</h2></div>
+              </div>
+              <article class="module-reflection-card">
+                <div class="module-reflection-symbol">?</div>
+                <div id="module-reflection-question"></div>
+              </article>
+            </section>
+
+            <!-- EVIDENCE GUIDANCE -->
+            <section class="module-block module-evidence-guidance hidden" id="module-evidence-guidance" hidden>
+              <div class="module-section-heading">
+                <div class="module-section-icon">09</div>
+                <div><span class="module-section-label">PROVE YOUR PROGRESS</span><h2>What to submit</h2></div>
+              </div>
+              <div class="module-evidence-guidance-card">
+                <div class="module-evidence-icon">&#10003;</div>
+                <div id="module-evidence-instructions"></div>
+              </div>
+            </section>
+          </div>
+
+          <!-- GENERATION ERROR -->
+          <div class="module-error hidden" id="module-error" hidden>
+            <div class="module-error-icon">!</div>
+            <h2>Lumia couldn't prepare this module</h2>
+            <p id="module-error-message">Your roadmap is safe. Try loading the module again.</p>
+            <button type="button" id="module-retry-button" class="module-retry-button">Try again</button>
+          </div>
+        </section>
+        <div
+          class="activity-learning-content"
+          id="activity-learning-content"
+        >
+
+
+          <div class="learning-block">
+
+            <span class="learning-number">
+              01
+            </span>
+
+            <div>
+
+              <h3>
+                Understand the idea
+              </h3>
+
+              <p id="activity-learning-one">
+                Start by understanding the key idea behind this activity.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="learning-block">
+
+            <span class="learning-number">
+              02
+            </span>
+
+            <div>
+
+              <h3>
+                Think about an example
+              </h3>
+
+              <p id="activity-learning-two">
+                Connect the idea to something you already know or use.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="learning-block">
+
+            <span class="learning-number">
+              03
+            </span>
+
+            <div>
+
+              <h3>
+                Apply it
+              </h3>
+
+              <p id="activity-learning-three">
+                Use what you have learned in a simple practical situation.
+              </p>
+
+            </div>
+
+          </div>
+
+
+        </div>
+
+
+
+        <!-- =================================
+             TASK
+        ================================== -->
+
+        <div class="activity-task-box">
+
+
+          <span class="section-label">
+            QUICK TASK
+          </span>
+
+
+          <h3 id="activity-task-title">
+            Try it yourself
+          </h3>
+
+
+          <p id="activity-task-text">
+            Complete the activity and think about what you learned.
+          </p>
+
+
+        </div>
+
+
+
+        <!-- =================================
+             EVIDENCE SUBMISSION
+        ================================== -->
+
+        <div class="activity-evidence-box" id="activity-evidence-box" hidden>
+          <div class="evidence-header">
+            <span class="section-label">PROOF OF WORK</span>
+            <h3>Submit your work</h3>
+            <p>Upload what you created, or write your response below. An extra explanation is optional when your work already demonstrates the task.</p>
+          </div>
+          <p class="privacy-notice" id="evidence-privacy-notice">Your evidence is private. CareerKraft may analyse this file using AI to review your activity and identify skills. Avoid uploading unnecessary personal information. <a href="privacy.html#evidence">Read about evidence privacy</a>.</p>
+          <div class="evidence-upload">
+            <label class="evidence-dropzone" id="evidence-dropzone" for="evidence-file-input">
+              <input type="file" id="evidence-file-input" name="evidenceFile" class="evidence-file-input" aria-describedby="evidence-upload-help evidence-privacy-notice">
+              <span class="evidence-upload-icon" aria-hidden="true">&#8593;</span>
+              <strong>Upload your work</strong>
+              <span>Choose a file or drag it here</span>
+              <small id="evidence-upload-help">Documents, code, spreadsheets, notebooks, images, audio or video &middot; up to 10 MB</small>
+            </label>
+            <div class="evidence-file-selection" id="evidence-file-selection" role="status" aria-live="polite" hidden>
+              <span class="evidence-file-icon" aria-hidden="true">&#10003;</span>
+              <div class="evidence-file-details">
+                <strong id="evidence-file-name"></strong>
+                <span id="evidence-file-size"></span>
+              </div>
+              <button type="button" class="evidence-file-remove" id="evidence-file-remove" aria-label="Remove uploaded file">Remove</button>
+            </div>
+          </div>
+          <div class="evidence-input-section" id="evidence-text-section">
+            <label for="evidence-text-input">Add a note <span class="evidence-label-optional">(optional)</span></label>
+            <textarea id="evidence-text-input" name="textContent" rows="5" maxlength="3000" aria-describedby="evidence-text-help evidence-privacy-notice" placeholder="Write your response here, or add anything you'd like Lumia to know about your uploaded work..."></textarea>
+            <small id="evidence-text-help">No file? You can write your full answer here instead. Maximum 3,000 characters.</small>
+          </div>
+          <div class="evidence-submit-status" id="evidence-submit-status" role="status" aria-live="polite" hidden></div>
+          <button type="button" class="primary-button" id="submit-evidence-button">Submit to Lumia &#10022;</button>
+        </div>
+
+      </article>
+
+
+
+      <!-- =================================
+           SIDEBAR
+      ================================== -->
+
+      <aside class="activity-sidebar">
+
+
+        <article class="activity-side-card">
+
+          <span class="section-label">
+            ABOUT THIS STEP
+          </span>
+
+
+          <div class="activity-detail-row">
+
+            <span>
+              Type
+            </span>
+
+            <strong id="activity-detail-type">
+              —
+            </strong>
+
+          </div>
+
+
+          <div class="activity-detail-row">
+
+            <span>
+              Estimated time
+            </span>
+
+            <strong id="activity-detail-time">
+              —
+            </strong>
+
+          </div>
+
+
+          <div class="activity-detail-row">
+
+            <span>
+              Phase
+            </span>
+
+            <strong id="activity-detail-phase">
+              —
+            </strong>
+
+          </div>
+
+
+          <div class="activity-detail-row">
+
+            <span>
+              Evidence
+            </span>
+
+            <strong id="activity-detail-evidence">
+              —
+            </strong>
+
+          </div>
+
+
+        </article>
+
+
+
+        <article class="activity-side-card reminder-card">
+
+
+          <span class="section-label">
+            REMEMBER
+          </span>
+
+
+          <h3>
+            Progress beats perfection.
+          </h3>
+
+
+          <p>
+            The goal is to understand the activity,
+            try it properly and learn something useful.
+          </p>
+
+
+        </article>
+
+
+      </aside>
+
+
+    </section>
+
+
+
+    <!-- =====================================
+         ACTION BAR
+    ====================================== -->
+
+    <section class="activity-action-bar">
+
+
+      <div>
+
+        <small>
+          YOUR PROGRESS
+        </small>
+
+        <strong id="activity-action-message">
+          Complete this activity when you're ready.
+        </strong>
+
+      </div>
+
+
+      <div class="activity-action-buttons">
+
+
+        <button
+          type="button"
+          class="secondary-button"
+          id="activity-save-button"
+        >
+          Back to dashboard
+        </button>
+
+
+        <button
+          type="button"
+          class="primary-button"
+          id="activity-complete-button"
+        >
+          Mark activity complete →
+        </button>
+
+
+      </div>
+
+
+    </section>
+
+
+  </main>
+
+
+
+  <!-- =====================================
+       SCRIPTS
+  ====================================== -->
+
+  <!-- =====================================
+       LUMIA AI REVIEW OVERLAY
+  ====================================== -->
+  <div class="lumia-overlay" id="lumia-overlay" role="dialog" aria-modal="true" aria-label="Lumia evidence review" tabindex="-1" hidden>
+    <div class="lumia-panel">
+      <!-- Orb -->
+      <div class="lumia-orb-wrap">
+        <div class="lumia-orbit orbit-one"></div>
+        <div class="lumia-orbit orbit-two"></div>
+        <div class="lumia-orbit orbit-three"></div>
+        <div class="lumia-orb">
+          <span id="lumia-orb-symbol">✦</span>
+        </div>
+      </div>
+
+      <!-- AI identity -->
+      <span class="lumia-label">LUMIA AI</span>
+
+      <!-- Processing state -->
+      <div id="lumia-processing" class="lumia-processing">
+        <h2>Reviewing your evidence</h2>
+        <p id="lumia-processing-message" role="status">Understanding your work...</p>
+        <div class="lumia-progress">
+          <span id="lumia-progress-bar"></span>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div id="lumia-result" class="lumia-result" hidden>
+        <span class="lumia-result-badge" id="lumia-result-badge">REVIEW COMPLETE</span>
+        <h2 id="lumia-result-title">Evidence approved</h2>
+        <p id="lumia-result-feedback" class="lumia-result-feedback"></p>
+
+        <!-- Skills -->
+        <div class="lumia-skills" id="lumia-skills" hidden>
+          <small>SKILLS LUMIA IDENTIFIED</small>
+          <div class="lumia-skill-list" id="lumia-skill-list"></div>
+        </div>
+
+        <!-- Actions -->
+        <div class="lumia-actions">
+          <button type="button" class="secondary-button" id="lumia-close-button">Close</button>
+          <button type="button" class="primary-button" id="lumia-continue-button">Continue your roadmap →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="module-generation-sound" src="assets/freesound_community-advertising-futuristic-36121.mp3" preload="auto" loop></audio>
+  <audio id="lumia-processing-sound" src="assets/soundreality-pitch-warper-177351.mp3" preload="auto"></audio>
+
+  <audio id="activity-completion-sound" src="assets/freesound_community-tada-fanfare-a-6313.mp3" preload="auto"></audio>
+  <audio id="activity-review-followup-sound" src="assets/freesound_community-advertising-futuristic-36121.mp3" preload="auto"></audio>
+  <script src="auth-api.js"></script>
+
+  <script src="module-formatting.js"></script>
+  <script src="evidence-policy.js"></script>
+  <script src="activity.js"></script>
+  <script src="lumia-widget.js"></script>
+
+
+
+  <footer class="site-footer"><p>&copy; <span data-current-year>2026</span> CareerKraft</p><nav aria-label="Footer navigation"><a href="/index.html">Home</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/terms.html#contact">Contact</a></nav></footer>
+
+</body>
+
+</html>

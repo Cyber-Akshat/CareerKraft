@@ -4,19 +4,20 @@
 <head>
 
   <meta charset="UTF-8">
+  <script src="/accessibility.js"></script>
 
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   >
 
-  <title>CareerKraft | Sign In</title>
+  <meta name="description" content="Sign in or create your CareerKraft account to explore careers, build your roadmap and develop skills.">
+  <title>Sign in | CareerKraft</title>
 
   <script>
-    document.documentElement.dataset.theme =
-      localStorage.getItem("careerkraft-theme") === "light"
-        ? "light"
-        : "dark";
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+    } catch { document.documentElement.dataset.theme = "light"; }
   </script>
 
   <link
@@ -31,6 +32,9 @@
 
   <script src="cursor.js" defer></script>
 
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
 </head>
 
 
@@ -149,6 +153,7 @@
           type="button"
           class="google-button"
           id="google-login"
+          aria-describedby="auth-privacy-notice"
         >
 
           <span class="google-icon">
@@ -161,6 +166,9 @@
 
         </button>
 
+
+
+        <p class="privacy-notice" id="auth-privacy-notice">We use your account details to provide and secure your account. Google sign-in also shares basic profile details with CareerKraft. Read our <a href="privacy.html">Privacy Policy</a>.</p>
 
 
         <!-- ==============================
@@ -218,13 +226,9 @@
               </label>
 
 
-              <a
-                href="#"
-                id="forgot-password"
-                class="forgot-password"
-              >
+              <button type="button" id="forgot-password" class="forgot-password">
                 Forgot password?
-              </a>
+              </button>
 
             </div>
 
@@ -236,6 +240,7 @@
                 id="login-password"
                 placeholder="Enter your password"
                 autocomplete="current-password"
+                maxlength="128"
                 required
               >
 
@@ -272,7 +277,7 @@
 
 
           <div
-            id="login-message"
+            id="login-message" role="status" aria-live="polite"
             class="auth-message"
           ></div>
 
@@ -287,6 +292,7 @@
 
         <form
           id="register-form"
+          aria-describedby="register-privacy-notice"
           class="auth-form hidden"
         >
 
@@ -339,9 +345,10 @@
               <input
                 type="password"
                 id="register-password"
-                placeholder="At least 8 characters"
+                placeholder="15–128 characters"
                 autocomplete="new-password"
-                minlength="8"
+                minlength="15"
+                maxlength="128"
                 required
               >
 
@@ -374,7 +381,8 @@
                 id="confirm-password"
                 placeholder="Repeat your password"
                 autocomplete="new-password"
-                minlength="8"
+                minlength="15"
+                maxlength="128"
                 required
               >
 
@@ -403,14 +411,13 @@
 
             <span>
               I agree to the
-              <a href="#">Terms</a>
-              and
-              <a href="#">Privacy Policy</a>.
+              <a href="terms.html" target="_blank" rel="noopener" aria-label="CareerKraft Terms of Use (opens in a new tab)">CareerKraft Terms of Use</a>
+              and confirm that I am at least 15 years old.
             </span>
 
           </label>
 
-
+          <p class="privacy-notice" id="register-privacy-notice">Our <a href="privacy.html#information">Privacy Policy</a> explains how we use your account information, career answers, evidence and Lumia messages, and how to access or delete your data.</p>
 
           <button
             type="submit"
@@ -430,7 +437,7 @@
 
 
           <div
-            id="register-message"
+            id="register-message" role="status" aria-live="polite"
             class="auth-message"
           ></div>
 
@@ -533,7 +540,6 @@
           <div class="progress-visual">
 
             <div class="progress-circle">
-              68%
             </div>
 
             <div class="progress-lines">
@@ -604,11 +610,9 @@
 
 
 
-  <!-- SUPABASE -->
+  <!-- CAREERKRAFT AUTH -->
 
-  <script
-    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
-  ></script>
+  <script src="auth-api.js"></script>
 
 
   <!-- AUTH -->
@@ -616,6 +620,9 @@
   <script src="auth.js"></script>
   <script src="auth-theme.js"></script>
 
+
+
+  <footer class="site-footer"><p>&copy; <span data-current-year>2026</span> CareerKraft</p><nav aria-label="Footer navigation"><a href="/index.html">Home</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/terms.html#contact">Contact</a></nav></footer>
 
 </body>
 

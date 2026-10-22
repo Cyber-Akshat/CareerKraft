@@ -4,6 +4,7 @@
 <head>
 
   <meta charset="UTF-8">
+  <script src="/accessibility.js"></script>
 
   <meta
     name="viewport"
@@ -15,15 +16,12 @@
     content="Build your personalised CareerKraft career profile."
   >
 
-  <title>
-    CareerKraft | Build Your Profile
-  </title>
+  <title>Build your career profile | CareerKraft</title>
 
   <script>
-    document.documentElement.dataset.theme =
-      localStorage.getItem("careerkraft-theme") === "light"
-        ? "light"
-        : "dark";
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+    } catch { document.documentElement.dataset.theme = "light"; }
   </script>
 
   <link
@@ -38,6 +36,9 @@
 
   <script src="./cursor.js" defer></script>
 
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
 </head>
 
 
@@ -108,6 +109,8 @@
 
     </nav>
 
+    <p id="onboarding-session-message" role="status" aria-live="polite" hidden></p>
+
 
 
     <!-- ========================================
@@ -150,7 +153,7 @@
 
 
             <span class="eyebrow">
-              WELCOME TO CAREERKRAFT
+              Welcome To CareerKraft
             </span>
 
 
@@ -172,6 +175,8 @@
               uncover careers worth exploring.
 
             </p>
+
+            <p class="privacy-notice">We save your quiz answers to recommend careers and personalise your roadmap. <a href="privacy.html#purposes">Read how we use your answers</a>.</p>
 
 
             <button
@@ -1197,12 +1202,7 @@
 
 
             <div class="analysis-core">
-
-              <img
-                src="assets/logo.png"
-                alt=""
-              >
-
+              <span aria-hidden="true">✦</span>
             </div>
 
 
@@ -1210,7 +1210,7 @@
 
 
           <span class="eyebrow">
-            BUILDING YOUR PROFILE
+            LUMIA AI
           </span>
 
 
@@ -1311,188 +1311,7 @@
           <div
             class="career-results"
             id="career-results"
-          >
-
-
-            <!-- Filled dynamically by onboarding.js -->
-
-
-            <article class="career-result-card top-match">
-
-
-              <div class="match-rank">
-                #1 MATCH
-              </div>
-
-
-              <div class="match-score">
-
-                <span>
-                  91
-                </span>
-
-                <small>
-                  % match
-                </small>
-
-              </div>
-
-
-              <div class="match-content">
-
-                <span class="match-category">
-                  TECHNOLOGY
-                </span>
-
-                <h3>
-                  Software Developer
-                </h3>
-
-                <p>
-                  Build digital products,
-                  solve technical problems
-                  and turn ideas into working software.
-                </p>
-
-
-                <div class="match-reasons">
-
-                  <span>
-                    Problem solving
-                  </span>
-
-                  <span>
-                    Technology
-                  </span>
-
-                  <span>
-                    Building
-                  </span>
-
-                </div>
-
-
-              </div>
-
-
-              <button
-                type="button"
-                class="career-select-button"
-              >
-                Explore this career →
-              </button>
-
-
-            </article>
-
-
-
-            <article class="career-result-card">
-
-
-              <div class="match-rank">
-                #2 MATCH
-              </div>
-
-
-              <div class="match-score">
-
-                <span>
-                  87
-                </span>
-
-                <small>
-                  % match
-                </small>
-
-              </div>
-
-
-              <div class="match-content">
-
-                <span class="match-category">
-                  TECHNOLOGY
-                </span>
-
-                <h3>
-                  Cyber Security Analyst
-                </h3>
-
-                <p>
-                  Protect systems,
-                  investigate threats
-                  and solve security problems.
-                </p>
-
-
-              </div>
-
-
-              <button
-                type="button"
-                class="career-select-button"
-              >
-                Explore this career →
-              </button>
-
-
-            </article>
-
-
-
-            <article class="career-result-card">
-
-
-              <div class="match-rank">
-                #3 MATCH
-              </div>
-
-
-              <div class="match-score">
-
-                <span>
-                  82
-                </span>
-
-                <small>
-                  % match
-                </small>
-
-              </div>
-
-
-              <div class="match-content">
-
-                <span class="match-category">
-                  DATA
-                </span>
-
-                <h3>
-                  Data Analyst
-                </h3>
-
-                <p>
-                  Explore information,
-                  uncover patterns and
-                  turn data into useful decisions.
-                </p>
-
-
-              </div>
-
-
-              <button
-                type="button"
-                class="career-select-button"
-              >
-                Explore this career →
-              </button>
-
-
-            </article>
-
-
-          </div>
+          ><p role="status">Your career recommendations will appear after your answers have been analysed.</p></div>
 
 
 
@@ -1519,20 +1338,16 @@
 
 
   <!-- ========================================
-       SUPABASE
-  ========================================= -->
-
-  <script
-    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
-  ></script>
-
-
-  <!-- ========================================
        ONBOARDING
   ========================================= -->
 
+  <audio id="lumia-quiz-sound" src="assets/soundreality-pitch-warper-177351.mp3" preload="auto"></audio>
+  <script src="auth-api.js"></script>
   <script src="./onboarding.js"></script>
 
+
+
+  <footer class="site-footer"><p>&copy; <span data-current-year>2026</span> CareerKraft</p><nav aria-label="Footer navigation"><a href="/index.html">Home</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/terms.html#contact">Contact</a></nav></footer>
 
 </body>
 

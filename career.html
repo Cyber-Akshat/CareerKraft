@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+  <script src="/accessibility.js"></script>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Explore a career with CareerKraft."
+  >
+
+  <title>Explore careers | CareerKraft</title>
+
+
+  <script>
+    document.documentElement.dataset.theme =
+      localStorage.getItem("careerkraft-theme") === "dark"
+        ? "dark"
+        : "light";
+  </script>
+
+
+  <link
+    rel="stylesheet"
+    href="career.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="lumia-widget.css"
+  >
+
+  <link
+    rel="stylesheet"
+    href="cursor.css"
+  >
+
+  <script
+    src="cursor.js"
+    defer
+  ></script>
+
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
+</head>
+
+
+<body>
+
+
+  <main class="career-page">
+
+
+    <!-- ========================================
+         NAVIGATION
+    ========================================= -->
+
+    <nav class="career-nav">
+
+
+      <a
+        href="index.html"
+        class="career-brand"
+      >
+
+        <img
+          src="assets/logo.png"
+          alt="CareerKraft"
+        >
+
+        <span>
+          CareerKraft
+        </span>
+
+      </a>
+
+
+      <div class="career-nav-actions">
+
+
+        <button
+          type="button"
+          id="career-theme-toggle"
+          class="career-theme-toggle"
+          aria-label="Switch to dark mode"
+          title="Switch to dark mode"
+          aria-pressed="false"
+        >
+          <svg class="career-theme-icon career-theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+          </svg>
+          <svg class="career-theme-icon career-theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.5 8.5 0 1 0 20.9 13Z"></path>
+          </svg>
+        </button>
+
+
+        <button
+          type="button"
+          id="back-to-matches"
+          class="back-to-matches"
+        >
+          ← My matches
+        </button>
+
+
+      </div>
+
+
+    </nav>
+
+
+
+    <!-- ========================================
+         HERO
+    ========================================= -->
+
+    <section class="career-hero">
+
+
+      <div class="career-hero-copy">
+
+
+        <div class="career-meta">
+
+
+          <span
+            class="career-category"
+            id="career-category"
+          >CAREER PROFILE</span>
+
+
+          <span class="career-match-pill">
+
+            <strong id="career-match-score">—</strong>
+
+            match
+
+          </span>
+
+
+        </div>
+
+
+        <h1 id="career-title">Loading career…</h1>
+
+
+        <p
+          class="career-intro"
+          id="career-intro"
+        >Loading your career profile and research.</p>
+
+
+
+        <div
+          class="match-reason-box"
+          id="match-reason-box"
+        >
+
+          <span class="match-reason-label">
+            WHY CAREERKRAFT PICKED THIS
+          </span>
+
+
+          <p id="career-match-reason">Loading the reasons behind this recommendation.</p>
+
+
+        </div>
+
+
+      </div>
+
+
+
+      <!-- HERO VISUAL -->
+
+      <div class="career-hero-visual">
+
+
+        <div class="career-visual-orbit orbit-one"></div>
+
+        <div class="career-visual-orbit orbit-two"></div>
+
+
+        <div class="career-role-card">
+
+
+          <span class="role-card-label">
+            CAREER MATCH
+          </span>
+
+
+          <div
+            class="role-card-icon"
+            id="career-icon"
+          >✦</div>
+
+
+          <strong id="career-card-title">Career overview</strong>
+
+
+          <span>
+            Explore before you decide.
+          </span>
+
+
+        </div>
+
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         WHAT DO THEY ACTUALLY DO?
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          01
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            THE REAL JOB
+          </span>
+
+          <h2>
+            So... what do they actually do?
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div class="career-story-card">
+
+
+        <p class="story-intro">
+
+          Imagine someone comes to your team
+          and says:
+
+        </p>
+
+
+        <blockquote id="career-scenario">Loading a real-world example.</blockquote>
+
+
+        <p>
+          Your job could look something like this:
+        </p>
+
+
+
+        <div
+          class="career-process"
+          id="career-process"
+        ></div>
+
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         DAY IN THE LIFE
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          02
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            REALITY CHECK
+          </span>
+
+          <h2>
+            What could a day feel like?
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div
+        class="day-timeline"
+        id="day-timeline"
+      ></div>
+
+
+      <p class="career-disclaimer">
+
+        This is an illustrative example.
+        Real working days vary by employer,
+        seniority and project.
+
+      </p>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         QUICK FACTS
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          03
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            QUICK FACTS
+          </span>
+
+          <h2>
+            The stuff you probably want to know.
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div class="career-facts-grid">
+
+
+        <article class="career-fact">
+
+          <span>
+            £
+          </span>
+
+          <small>
+            TYPICAL PAY
+          </small>
+
+          <strong id="career-salary">
+            Loading...
+          </strong>
+
+        </article>
+
+
+
+        <article class="career-fact">
+
+          <span>
+            ◷
+          </span>
+
+          <small>
+            HOURS
+          </small>
+
+          <strong id="career-hours">
+            Loading...
+          </strong>
+
+        </article>
+
+
+
+        <article class="career-fact">
+
+          <span>
+            ↗
+          </span>
+
+          <small>
+            PROGRESSION
+          </small>
+
+          <strong id="career-progression-summary">
+            Loading...
+          </strong>
+
+        </article>
+
+
+
+        <article class="career-fact">
+
+          <span>
+            ◎
+          </span>
+
+          <small>
+            WORK STYLE
+          </small>
+
+          <strong id="career-work-environment">
+            Loading...
+          </strong>
+
+        </article>
+
+
+      </div>
+
+      <div class="career-skills-panel" hidden>
+        <span class="eyebrow">SKILLS YOU'LL USE</span>
+        <ul class="career-skills" id="career-skills"></ul>
+      </div>
+
+      <div class="source-note">
+
+        <span>
+          Research
+        </span>
+
+        <p id="career-research-note">
+
+          CareerKraft uses trusted career and
+          education sources and shows when
+          information was last reviewed.
+
+        </p>
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         WOULD YOU ENJOY IT?
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          04
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            BE REAL WITH YOURSELF
+          </span>
+
+          <h2>
+            Would you actually enjoy this?
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div class="career-fit-grid">
+
+
+        <article class="fit-card positive">
+
+
+          <span class="fit-title">
+            YOU MIGHT LOVE IT IF...
+          </span>
+
+
+          <ul id="career-enjoy-list"></ul>
+
+
+        </article>
+
+
+
+        <article class="fit-card caution">
+
+
+          <span class="fit-title">
+            THINK ABOUT IT IF...
+          </span>
+
+
+          <ul id="career-caution-list"></ul>
+
+
+        </article>
+
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         ENTRY ROUTES
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          05
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            HOW DO I GET THERE?
+          </span>
+
+          <h2>
+            There's usually more than one route.
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div
+        class="route-grid"
+        id="career-routes"
+      ></div>
+
+      <div id="career-apprenticeships" class="career-apprenticeships" hidden>
+        <span class="eyebrow">APPRENTICESHIP SPOTLIGHT</span>
+        <div class="apprenticeship-list"></div>
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         TRY THE CAREER
+    ========================================= -->
+
+    <section class="career-section challenge-section">
+
+
+      <div class="challenge-card">
+
+
+        <div class="challenge-copy">
+
+
+          <span class="eyebrow">
+            CAREERKRAFT MINI CHALLENGE
+          </span>
+
+
+          <h2>
+            Don't just read about it.
+            Try it.
+          </h2>
+
+
+          <p id="career-challenge-description">
+
+            Spend 15 minutes completing a tiny
+            activity inspired by this career.
+
+          </p>
+
+
+          <div
+            class="challenge-task"
+            id="career-challenge-task"
+          >Loading this career’s mini challenge.</div>
+
+
+          <button
+            type="button"
+            class="secondary-button"
+            id="start-challenge-button"
+          >
+            Start mini challenge →
+          </button>
+
+
+        </div>
+
+
+        <div class="challenge-visual">
+
+          <span>
+            15
+          </span>
+
+          <small>
+            MINUTES
+          </small>
+
+        </div>
+
+
+      </div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         CAREER PROGRESSION
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          06
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            WHERE COULD IT LEAD?
+          </span>
+
+          <h2>
+            Your first job isn't the finish line.
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div
+        class="progression-path"
+        id="career-progression"
+      ></div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         RESEARCH MORE
+    ========================================= -->
+
+    <section class="career-section">
+
+
+      <div class="section-heading">
+
+
+        <span class="section-number">
+          07
+        </span>
+
+
+        <div>
+
+          <span class="eyebrow">
+            GO DEEPER
+          </span>
+
+          <h2>
+            Do your own research too.
+          </h2>
+
+        </div>
+
+
+      </div>
+
+
+
+      <div
+        class="research-grid"
+        id="career-sources"
+      ><p class="career-research-loading" role="status">Loading career research links…</p></div>
+
+
+    </section>
+
+
+
+    <!-- ========================================
+         DECISION
+    ========================================= -->
+
+    <section class="career-decision">
+
+
+      <span class="eyebrow">
+        WHAT DO YOU THINK?
+      </span>
+
+
+      <h2>
+        Could you see yourself doing this?
+      </h2>
+
+
+      <p>
+
+        You don't need to decide your whole future
+        today. Just decide whether this career is
+        worth exploring further.
+
+      </p>
+
+
+      <div class="decision-actions">
+
+
+        <button
+          type="button"
+          class="decision-back"
+          id="decision-back"
+        >
+          ← Explore another match
+        </button>
+
+
+        <button
+          type="button"
+          class="primary-button"
+          id="choose-career-button"
+          disabled
+        >
+          I'm interested in this career →
+        </button>
+
+        <a class="decision-back decision-dashboard" id="return-dashboard-button" role="link" aria-disabled="true" tabindex="-1" title="Choose a career to open your dashboard"><span aria-hidden="true">&#8592;</span> Return to dashboard</a>
+
+
+      </div>
+
+
+    </section>
+
+
+
+  </main>
+
+
+
+  <!-- ========================================
+       CAREER LOGIC
+  ========================================= -->
+
+  <script src="auth-api.js"></script>
+  <script src="career-data.js"></script>
+  <script src="career.js"></script>
+  <script src="lumia-widget.js"></script>
+
+
+
+  <footer class="site-footer"><p>&copy; <span data-current-year>2026</span> CareerKraft</p><nav aria-label="Footer navigation"><a href="/index.html">Home</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/terms.html#contact">Contact</a></nav></footer>
+
+</body>
+
+</html>

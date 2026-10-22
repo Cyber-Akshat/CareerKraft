@@ -299,6 +299,9 @@ h2 {
 }
 
 .forgot-password {
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--purple-dark);
   font-size: 0.78rem;
   font-weight: 700;
@@ -2556,4 +2559,37 @@ body:not(.verification-body) {
 
   }
 
+}
+/* Email recovery after an expired or reused verification link. */
+.verify-email-address {
+  margin: 1.5rem 0;
+}
+.verify-email-address label {
+  display: block;
+  margin-bottom: .5rem;
+}
+.verify-email-address input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: .85rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: .75rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.verify-layout { grid-template-columns: minmax(0, 46fr) minmax(0, 54fr); }
+.verify-content, .verify-status, .label-row > *, .terms-row > span { min-width: 0; }
+.label-row { flex-wrap: wrap; }
+.auth-form, .form-group { grid-template-columns: minmax(0, 1fr); }
+.verify-brand { max-width: calc(100% - 110px); }
+.verify-brand img { flex-shrink: 0; }
+@media (max-width: 1000px) {
+  .verify-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .form-group input, .password-wrapper input, .verify-email-address input { font-size: 16px; }
+  .auth-tab, .forgot-password, .password-toggle, .auth-switch button { min-height: 44px; }
+  .forgot-password, .auth-switch button { display: inline-flex; align-items: center; }
 }

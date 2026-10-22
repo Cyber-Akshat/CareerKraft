@@ -4,6 +4,7 @@
 <head>
 
   <meta charset="UTF-8">
+  <script src="/accessibility.js"></script>
 
   <meta
     name="viewport"
@@ -12,12 +13,16 @@
 
   <meta
     name="description"
-    content="Verify your email to finish creating your CareerKraft account."
+    content="Follow the email verification steps to continue securely with CareerKraft."
   >
 
-  <title>
-    CareerKraft | Verify your email
-  </title>
+  <title>Verify your email | CareerKraft</title>
+
+  <script>
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+    } catch { document.documentElement.dataset.theme = "light"; }
+  </script>
 
   <link
     rel="stylesheet"
@@ -31,6 +36,9 @@
 
   <script src="cursor.js" defer></script>
 
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <link rel="stylesheet" href="/site.css">
+  <script src="/site.js" defer></script>
 </head>
 
 
@@ -129,7 +137,7 @@
 
         <p class="verify-description">
 
-          We've sent a verification link to
+          If this address can be used, an email with the next steps will arrive shortly:
 
         </p>
 
@@ -142,9 +150,7 @@
 
         <p class="verify-description">
 
-          Open the email and click
-          <strong>Confirm your email</strong>
-          to activate your CareerKraft account.
+          Follow the instructions in the email to continue. If you already have an account, you can return to sign in.
 
         </p>
 
@@ -164,11 +170,11 @@
             <div>
 
               <strong>
-                Account created
+                Request received
               </strong>
 
               <p>
-                Your CareerKraft account is ready.
+                Follow the next steps sent to your email, if eligible.
               </p>
 
             </div>
@@ -232,12 +238,17 @@
 
 
 
+        <div id="resend-email-address" class="verify-email-address" hidden>
+          <label for="resend-address">Email address</label>
+          <input id="resend-address" type="email" autocomplete="email" placeholder="Enter the email you registered with" maxlength="254">
+        </div>
+
         <div class="verify-actions">
 
 
           <button
             type="button"
-            id="resend-email"
+          id="resend-email"
             class="verify-primary-button"
           >
             Resend verification email
@@ -259,6 +270,8 @@
         <p
           id="verify-message"
           class="verify-message"
+          role="status"
+          aria-live="polite"
         ></p>
 
 
@@ -296,11 +309,11 @@
         <div class="floating-card card-career">
 
           <span>
-            91%
+            ◎
           </span>
 
           <p>
-            Career Match
+            Career paths
           </p>
 
         </div>
@@ -423,15 +436,16 @@
 
 
 
-  <!-- SUPABASE -->
+  <!-- CAREERKRAFT AUTH -->
 
-  <script
-    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
-  ></script>
+  <script src="auth-api.js"></script>
 
 
   <script src="verify-email.js"></script>
 
+
+
+  <footer class="site-footer"><p>&copy; <span data-current-year>2026</span> CareerKraft</p><nav aria-label="Footer navigation"><a href="/index.html">Home</a><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/terms.html#contact">Contact</a></nav></footer>
 
 </body>
 

@@ -11,7 +11,7 @@ function updateThemeToggle(theme) {
   authThemeToggle.setAttribute("title", nextLabel);
   authThemeToggle.setAttribute(
     "aria-pressed",
-    String(theme === "light")
+    String(theme === "dark")
   );
 }
 
@@ -27,7 +27,11 @@ authThemeToggle.addEventListener(
 
     document.documentElement.dataset.theme =
       nextTheme;
-    localStorage.setItem("careerkraft-theme", nextTheme);
+    try {
+      localStorage.setItem("careerkraft-theme", nextTheme);
+    } catch {
+      // Theme switching also works when browser storage is unavailable.
+    }
     updateThemeToggle(nextTheme);
   }
 );

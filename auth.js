@@ -1,22 +1,21 @@
-/* =========================================
-   SUPABASE
-========================================= */
+const authClient = window.careerAuth;
 
-const SUPABASE_URL =
-  "https://vrvhccnvrwvocoimjpkg.supabase.co";
-
-const SUPABASE_KEY =
-  "sb_publishable_YmDYvdVDX1eXOqBx-Iickw_bZc5zj_V";
-
-
-const supabaseClient =
-  window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
-
-const postAuthUrl =
+let postAuthUrl =
   new URL("onboarding.html", window.location.href).href;
+
+async function resolvePostAuthUrl() {
+  const settingsUrl = authClient.settingsReturnUrl?.();
+  if (settingsUrl) return settingsUrl.href;
+  const { data, error } = await authClient.request("assessment");
+  if (error) throw new Error(error.message || "We couldn't load your saved career.");
+  return new URL(data?.selectedCareer ? "dashboard.html" : "onboarding.html", window.location.href).href;
+}
+
+function openVerification(email) {
+  const page = new URL("verify-email.html", window.location.href);
+  page.searchParams.set("email", email);
+  window.location.assign(page.href);
+}
 
 /* =========================================
    GOOGLE LOGIN
@@ -45,30 +44,10 @@ if (googleLoginButton) {
         <span>Connecting...</span>
       `;
 
-      const {
-        data,
-        error
-      } =
-        await supabaseClient
-          .auth
-          .signInWithOAuth({
-
-            provider:
-              "google",
-
-            options: {
-              redirectTo:
-                postAuthUrl
-            }
-          });
-
-
-      if (error) {
-
-        console.error(
-          "Google login error:",
-          error
-        );
+      try {
+        const { error } = await authClient.signInWithOAuth();
+        if (error) throw new Error(error.message || "Google sign-in failed.");
+      } catch {
 
         googleLoginButton.disabled =
           false;
@@ -146,6 +125,7 @@ let currentMode = "login";
 function showRegister() {
 
   currentMode = "register";
+  document.title = "Create an account | CareerKraft";
 
 
   registerForm.classList.remove("hidden");
@@ -197,6 +177,7 @@ function showRegister() {
 function showLogin() {
 
   currentMode = "login";
+  document.title = "Sign in | CareerKraft";
 
 
   registerForm.classList.add("hidden");
@@ -453,12 +434,12 @@ registerForm.addEventListener(
 
 
     if (
-      password.length < 8
+      password.length < 15 || password.length > 128
     ) {
 
       showMessage(
         registerMessage,
-        "Your password must contain at least 8 characters.",
+        "Use a password with 15–128 characters.",
         "error"
       );
 
@@ -487,7 +468,7 @@ registerForm.addEventListener(
 
       showMessage(
         registerMessage,
-        "Please accept the Terms and Privacy Policy.",
+        "Please agree to the CareerKraft Terms of Use and confirm that you are at least 15 years old.",
         "error"
       );
 
@@ -514,12 +495,12 @@ registerForm.addEventListener(
     button
       .querySelector("span")
       .textContent =
-      "Creating account...";
+      "Sending request...";
 
 
 
     /* -----------------------------------------
-       SUPABASE SIGN UP
+       CAREERKRAFT SIGN UP
     ----------------------------------------- */
 
     try {
@@ -528,8 +509,7 @@ registerForm.addEventListener(
   data,
   error
 } =
-  await supabaseClient
-    .auth
+  await authClient
     .signUp({
 
       email:
@@ -545,10 +525,7 @@ registerForm.addEventListener(
           display_name:
             name
 
-        },
-
-        emailRedirectTo:
-          postAuthUrl
+        }
 
       }
 
@@ -556,12 +533,6 @@ registerForm.addEventListener(
 
 
       if (error) {
-
-        console.error(
-          "Sign up error:",
-          error
-        );
-
 
         showMessage(
           registerMessage,
@@ -586,62 +557,12 @@ registerForm.addEventListener(
 
 
 
-      console.log(
-        "Account created:",
-        data
-      );
-
-
-      /*
-        Supabase may require email
-        verification.
-
-        If there is already a session,
-        the account can continue
-        immediately.
-      */
-
-
-      if (data.session) {
-
-        showMessage(
-          registerMessage,
-          "Account created successfully ✓",
-          "success"
-        );
-
-
-        setTimeout(
-          () => {
-
-            window.location.href =
-              postAuthUrl;
-
-          },
-          1200
-        );
-
-      }
-
-      else {
-
-        const verificationPage =
-          new URL("verify-email.html", window.location.href);
-
-        verificationPage.searchParams.set("email", email);
-        window.location.href = verificationPage.href;
-
-      }
+      showMessage(registerMessage, data.message || "If this address can be used, an email with the next steps will arrive shortly.", "success");
+      openVerification(email);
 
     }
 
     catch (error) {
-
-      console.error(
-        "Registration error:",
-        error
-      );
-
 
       showMessage(
         registerMessage,
@@ -740,8 +661,7 @@ loginForm.addEventListener(
         data,
         error
       } =
-        await supabaseClient
-          .auth
+        await authClient
           .signInWithPassword({
 
             email:
@@ -755,15 +675,9 @@ loginForm.addEventListener(
 
       if (error) {
 
-        console.error(
-          "Login error:",
-          error
-        );
-
-
         showMessage(
           loginMessage,
-          "Incorrect email or password.",
+          error.message,
           "error"
         );
 
@@ -782,12 +696,6 @@ loginForm.addEventListener(
 
 
 
-      console.log(
-        "Logged in:",
-        data.user
-      );
-
-
       showMessage(
         loginMessage,
         "Welcome back ✓",
@@ -798,6 +706,8 @@ loginForm.addEventListener(
       buttonText.textContent =
         "Welcome back ✓";
 
+
+      postAuthUrl = await resolvePostAuthUrl();
 
       setTimeout(
         () => {
@@ -812,12 +722,6 @@ loginForm.addEventListener(
     }
 
     catch (error) {
-
-      console.error(
-        "Login error:",
-        error
-      );
-
 
       showMessage(
         loginMessage,
@@ -849,12 +753,16 @@ const forgotPassword =
     "#forgot-password"
   );
 
+let passwordResetRequestPending = false;
+
 
 forgotPassword.addEventListener(
   "click",
   async (event) => {
 
     event.preventDefault();
+
+    if (passwordResetRequestPending) return;
 
 
     const email =
@@ -878,13 +786,17 @@ forgotPassword.addEventListener(
     }
 
 
+    passwordResetRequestPending = true;
+    forgotPassword.setAttribute("aria-disabled", "true");
+    forgotPassword.setAttribute("aria-busy", "true");
+
     try {
 
       const {
+        data,
         error
       } =
-        await supabaseClient
-          .auth
+        await authClient
           .resetPasswordForEmail(
             email
           );
@@ -905,7 +817,7 @@ forgotPassword.addEventListener(
 
       showMessage(
         loginMessage,
-        "Password reset email sent ✓",
+        data?.message || "If this address is eligible, an email with the next steps will arrive shortly.",
         "success"
       );
 
@@ -913,17 +825,16 @@ forgotPassword.addEventListener(
 
     catch (error) {
 
-      console.error(
-        error
-      );
-
-
       showMessage(
         loginMessage,
-        "Unable to send reset email.",
+        "Unable to complete this request. Please try again.",
         "error"
       );
 
+    } finally {
+      passwordResetRequestPending = false;
+      forgotPassword.removeAttribute("aria-disabled");
+      forgotPassword.removeAttribute("aria-busy");
     }
 
   }
@@ -936,27 +847,25 @@ forgotPassword.addEventListener(
 ========================================= */
 
 async function checkSession() {
-
-  const {
-    data
-  } =
-    await supabaseClient
-      .auth
-      .getSession();
-
-  if (
-    data.session
-  ) {
-
-    console.log(
-      "Existing CareerKraft session:",
-      data.session.user.email
-    );
-
+  try {
+    const { data, error } = await authClient.getSession();
+    if (!error && data?.session) window.location.replace(await resolvePostAuthUrl());
+  } catch (error) {
+    showMessage(loginMessage, error.message || "We couldn't load your account. Please try again.", "error");
   }
-
 }
 
-
 checkSession();
-showLogin();
+if (["register", "signup"].includes(new URLSearchParams(window.location.search).get("mode"))) showRegister();
+else showLogin();
+
+const authError = new URLSearchParams(window.location.search).get("error");
+const authErrors = {
+  google_unconfigured: "Google sign-in needs server configuration.",
+  google_failed: "Google sign-in failed. Please try again.",
+  google_existing_account: "Google sign-in failed. Please try again."
+};
+if (authErrors[authError]) showMessage(loginMessage, authErrors[authError], "error");
+if (new URLSearchParams(window.location.search).get("account") === "deleted") {
+  showMessage(loginMessage, "Your account and saved CareerKraft data have been deleted.", "success");
+}
