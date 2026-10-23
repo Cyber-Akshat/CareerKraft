@@ -19,16 +19,23 @@ data/accounts.sqlite. No Supabase URL or key is needed. Sessions use HttpOnly
 cookies. Verification and password reset links expire and can be used once;
 resets revoke existing sessions. Existing Supabase accounts are not migrated.
 
-With MAIL_MODE=preview, emails are saved privately to data/mail/. Open the local
-text file and copy its link into your browser. No email is delivered to Gmail
-in this mode. For real delivery, set MAIL_MODE=smtp and your provider's SMTP_HOST,
-SMTP_PORT, SMTP_USER, SMTP_PASSWORD and MAIL_FROM in .env, then restart.
+For local development, MAIL_MODE=preview saves emails privately to data/mail/.
+Open the local text file and copy its link into your browser. No email is
+delivered in this mode; preview is unavailable in production.
 
-SMTP delivery does not require the recipient to connect a Google account. The
-server logs SMTP acceptance counts and message IDs, or failure codes, without
-logging recipients, verification links or credentials. SMTP acceptance confirms
-that the mail server accepted a message; check spam folders and the sending
-mailbox for bounce notices if it does not arrive.
+For real delivery, set MAIL_MODE=brevo, BREVO_API_KEY and MAIL_FROM in .env, then
+restart. BREVO is also supported as an alias for BREVO_API_KEY. MAIL_FROM accepts
+a plain email address or a display name, such as `CareerKraft <hello@example.com>`.
+Register and verify the sender in Brevo before sending; see
+[Brevo's transactional email setup](https://developers.brevo.com/docs/send-a-transactional-email).
+Verification emails, resends, password resets and email-change confirmations all
+use this shared Brevo HTTPS API transport. SMTP settings and Nodemailer are no
+longer required. Recipients do not need to connect a Google account.
+
+Delivery logs contain only sanitized status information, without request or
+response payloads, addresses, verification links, tokens or API keys. Failures
+return generic messages. API acceptance does not guarantee inbox delivery;
+check Brevo's delivery events and the recipient's spam folder if mail is missing.
 
 For people using another device, APP_URL must be the publicly reachable HTTPS
 address of the app. A link to http://localhost:3000 opens the recipient's own
@@ -73,8 +80,10 @@ avatar files. Deletion requires the current password, or recent Google verificat
 for Google-only accounts, plus typing DELETE in the confirmation form.
 
 Keep .env and data/ private. For production, use HTTPS, persistent storage,
-NODE_ENV=production, MAIL_MODE=smtp and the public HTTPS APP_URL. The local server
-binds to 127.0.0.1; configure hosting and proxy settings for your deployment.
+NODE_ENV=production, MAIL_MODE=brevo and the public HTTPS APP_URL. Set BREVO_API_KEY
+and the verified MAIL_FROM in the host's environment too: Render does not deploy
+your local .env file. The server binds to 0.0.0.0 and uses the host's PORT, with
+3000 as the local fallback.
 This SQLite setup is for a single server instance. A public rollout needs a
 database backup and account migration plan.
 
@@ -115,7 +124,7 @@ Login failures use the same status, message and code for incorrect, missing,
 unverified, Google-only and damaged-password accounts. Valid registration
 requests return the same neutral 202 response for new or existing addresses and
 for mail-delivery failure. Recovery responses are also neutral. Email delivery
-runs in a bounded background queue so SMTP latency cannot determine the public
+runs in a bounded background queue so provider latency cannot determine the public
 response. Delivery failures are logged without addresses, passwords or tokens;
 users can request another email later.
 
@@ -129,11 +138,11 @@ its short-lived security proof only to the newly issued session.
 
 Production requires NODE_ENV=production and an HTTPS APP_URL. Cookies use the
 __Host-ck_session name with Secure, HttpOnly, SameSite=Lax and Path=/, without a
-Domain attribute. Insecure production requests are rejected. Forwarded headers
-are ignored by default. If a reverse proxy you control terminates TLS, explicitly
-set TRUST_PROXY to its trusted IP/CIDR list (for example 127.0.0.1,::1 for a local
-proxy), restrict direct access to the Node server, and have that proxy replace
-forwarding headers. Boolean trust-all and arbitrary hop counts are rejected.
+Domain attribute. Insecure production requests are rejected. The app trusts one
+proxy hop by default so Render's forwarded HTTPS is recognized. TRUST_PROXY can
+override this with a trusted IP/CIDR list (for example 127.0.0.1,::1 for a local
+proxy). Restrict direct access to the Node server and have the proxy replace
+forwarding headers.
 
 Every response includes a Content Security Policy that permits application
 scripts and hashes of the existing inline initialization scripts, with no
@@ -145,8 +154,9 @@ and JSON (apart from the explicitly supported multipart uploads), and JSON bodie
 must be objects within the size limit. All account authorization and validation
 remain server-side.
 
-The .env file stays private and ignored by Git. Keep its SMTP/OAuth/API secrets in
-the server environment or a secret manager on public hosting. Restart the server
+The .env file stays private and ignored by Git. Keep the Brevo API key and other
+OAuth/API secrets on the server, in its environment or a secret manager on public
+hosting. Never place the Brevo key in browser code. Restart the server
 after deploying these changes or changing environment configuration.
 
 These changes harden the existing password and Google flow. The app does not yet

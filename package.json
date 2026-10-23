@@ -27,7 +27,6 @@
     "google-auth-library": "^10.3.0",
     "jszip": "^3.10.2",
     "multer": "^2.4.0",
-    "nodemailer": "^10.0.15",
     "pdf-parse": "^2.4.5",
     "saxes": "^6.0.0",
     "yauzl": "^3.4.0"

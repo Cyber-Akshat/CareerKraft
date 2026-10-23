@@ -13,7 +13,7 @@ const { randomBytes, createHash } = require('node:crypto');
 const { isIP } = require('node:net');
 const { mkdirSync, writeFileSync, unlinkSync, existsSync } = require('node:fs');
 const path = require('node:path');
-const nodemailer = require('nodemailer');
+const { createBrevoMailer } = require('./email-delivery');
 const { installAccountSettings, preferencesFor } = require('./account-settings-server');
 const { hashPassword, verifyPassword, validateNewPassword, PASSWORD_POLICY_MESSAGE } = require('./password-security');
 const { createAuthSecurity } = require('./auth-security');
@@ -719,34 +719,18 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   if (!roadmapColumns.some(column => column.name === 'updated_at')) {
     db.exec('ALTER TABLE roadmaps ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0; UPDATE roadmaps SET updated_at=created_at WHERE updated_at=0;');
   }
-  const transport = process.env.SMTP_HOST ? nodemailer.createTransport({
-    host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_PORT === '465', requireTLS: process.env.SMTP_PORT !== '465',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
-    connectionTimeout: 10000, socketTimeout: 15000
-  }) : null;
+  const sendWithBrevo = createBrevoMailer({
+    apiKey: process.env.BREVO_API_KEY || process.env.BREVO,
+    from: process.env.MAIL_FROM,
+    fetchImpl: options.fetchBrevo || fetch
+  });
   const send = options.sendMail || (async mail => {
     if (!production && process.env.MAIL_MODE === 'preview') {
       mkdirSync(path.join(dataDir, 'mail'), { recursive: true });
       writeFileSync(path.join(dataDir, 'mail', `${Date.now()}-${token().slice(0, 8)}.txt`), `To: ${mail.to}\nSubject: ${mail.subject}\n\n${mail.text}`);
       return;
     }
-    if (!transport) throw new Error('Email sending is not configured.');
-    try {
-      const delivery = await transport.sendMail({ from: process.env.MAIL_FROM, ...mail });
-      if (!delivery.accepted?.some(recipient => normalizeEmail(recipient) === normalizeEmail(mail.to))) {
-        const error = new Error('SMTP did not accept the intended recipient.');
-        error.code = 'EENVELOPE';
-        throw error;
-      }
-    } catch (error) {
-      console.error('SMTP email failed.', {
-        code: error.code || 'UNKNOWN',
-        responseCode: Number.isInteger(error.responseCode) ? error.responseCode : null,
-        command: typeof error.command === 'string' ? error.command.split(' ')[0] : null
-      });
-      throw error;
-    }
+    await sendWithBrevo(mail);
   });
   const safeUser = user => {
     if (!user) return null;
@@ -838,7 +822,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       db.exec('COMMIT'); return row.user_id;
     } catch (error) { db.exec('ROLLBACK'); throw error; }
   }
-  // Delivery runs outside the HTTP response so SMTP timing cannot disclose account existence.
+  // Delivery runs outside the HTTP response so provider latency cannot disclose account existence.
   const emailJobs = [];
   let activeEmails = 0;
   function pumpEmails() {
