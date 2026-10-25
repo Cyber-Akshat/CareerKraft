@@ -15,5 +15,12 @@
       <jdbc-url>jdbc:mysql://localhost:3306/careerkraft</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="CareerKraft.beta" uuid="0cf78491-e59f-4af6-b539-6ec3ffcc49f0">
+      <driver-ref>mysql.8</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:mysql://mysql-bc61e43-akshatprasad6b-6a38.k.aivencloud.com:10609/defaultdb</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

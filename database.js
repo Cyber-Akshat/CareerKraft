@@ -63,8 +63,12 @@ function mysqlConfig(options) {
     });
   }
   if (process.env.DB_SSL_CA || /^(?:1|true|required)$/i.test(process.env.DB_SSL || '')) {
-    config.ssl = { rejectUnauthorized: true };
-    if (process.env.DB_SSL_CA) config.ssl.ca = readFileSync(process.env.DB_SSL_CA, 'utf8');
+    config.ssl = { rejectUnauthorized: true, verifyIdentity: true };
+    if (process.env.DB_SSL_CA) {
+      const certificate = process.env.DB_SSL_CA.replace(/\\n/g, '\n');
+      config.ssl.ca = certificate.includes('-----BEGIN CERTIFICATE-----')
+        ? certificate : readFileSync(process.env.DB_SSL_CA, 'utf8');
+    }
   }
   Object.assign(config, options.mysql || {});
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {

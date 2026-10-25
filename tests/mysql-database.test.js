@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const path = require('node:path');
 const { createDatabase, MYSQL_SCHEMA, MYSQL_TABLES, translateSQL } = require('../database');
 
 function fakePool({ failSchema = false } = {}) {
@@ -32,6 +35,77 @@ function fakePool({ failSchema = false } = {}) {
   };
   return pool;
 }
+
+function capturePoolConfig(t, environment = {}) {
+  const variables = {
+    DATABASE_URL: undefined, DB_HOST: 'mysql.test', DB_PORT: '3306',
+    DB_NAME: 'test_database', DB_USER: 'test_user', DB_PASSWORD: 'test_password',
+    DB_SSL: undefined, DB_SSL_CA: undefined, ...environment
+  };
+  const previous = Object.fromEntries(Object.keys(variables).map(key => [key, process.env[key]]));
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  for (const [key, value] of Object.entries(variables)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  let config;
+  t.mock.method(require('mysql2/promise'), 'createPool', options => {
+    config = options;
+    return fakePool();
+  });
+  const db = createDatabase();
+  t.after(() => db.close());
+  return { db, config };
+}
+
+test('MySQL accepts inline PEM with escaped newlines and verifies the server identity', async t => {
+  const certificate = '-----BEGIN CERTIFICATE-----\nTEST CERTIFICATE\n-----END CERTIFICATE-----';
+  const { db, config } = capturePoolConfig(t, {
+    DB_SSL: 'true', DB_SSL_CA: certificate.replace(/\n/g, '\\n')
+  });
+  await db.ready;
+  assert.deepEqual(config.ssl, { rejectUnauthorized: true, verifyIdentity: true, ca: certificate });
+});
+
+test('MySQL still loads the CA certificate from a file path', async t => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'careerkraft-mysql-ca-'));
+  const certificatePath = path.join(directory, 'ca.pem');
+  const certificate = '-----BEGIN CERTIFICATE-----\nTEST FILE CERTIFICATE\n-----END CERTIFICATE-----\n';
+  writeFileSync(certificatePath, certificate);
+  t.after(() => { unlinkSync(certificatePath); rmdirSync(directory); });
+  const { db, config } = capturePoolConfig(t, { DB_SSL: 'true', DB_SSL_CA: certificatePath });
+  await db.ready;
+  assert.deepEqual(config.ssl, { rejectUnauthorized: true, verifyIdentity: true, ca: certificate });
+});
+
+test('a supplied CA enables verified MySQL TLS even when DB_SSL is false', async t => {
+  const certificate = '-----BEGIN CERTIFICATE-----\nTEST CERTIFICATE\n-----END CERTIFICATE-----';
+  const { db, config } = capturePoolConfig(t, { DB_SSL: 'false', DB_SSL_CA: certificate });
+  await db.ready;
+  assert.deepEqual(config.ssl, { rejectUnauthorized: true, verifyIdentity: true, ca: certificate });
+});
+
+test('MySQL TLS without a private CA uses certificate and identity verification', async t => {
+  const { db, config } = capturePoolConfig(t, { DB_SSL: 'true' });
+  await db.ready;
+  assert.deepEqual(config.ssl, { rejectUnauthorized: true, verifyIdentity: true });
+});
+
+test('MySQL without TLS settings retains its existing connection options', async t => {
+  const { db, config } = capturePoolConfig(t, { DB_SSL: 'false' });
+  await db.ready;
+  assert.equal(config.host, 'mysql.test');
+  assert.equal(config.port, 3306);
+  assert.equal(config.database, 'test_database');
+  assert.equal(config.user, 'test_user');
+  assert.equal(config.password, 'test_password');
+  assert.equal(Object.hasOwn(config, 'ssl'), false);
+});
 
 test('SQLite insert translation preserves duplicate behavior and SQL literals', () => {
   assert.equal(translateSQL('INSERT OR IGNORE INTO users(email,name) VALUES (?,?);'),

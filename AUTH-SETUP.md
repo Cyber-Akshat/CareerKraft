@@ -46,7 +46,29 @@ Quote a password in `.env` if it contains `#` or spaces. Alternatively, set
 must be percent-encoded when they contain special characters. Keep database
 credentials on the server. For a remote MySQL server requiring TLS, set
 `DB_SSL=true`; set `DB_SSL_CA` to its CA certificate file when your provider
-requires a private CA. Certificate verification stays enabled.
+requires a private CA. For example, an Aiven CA downloaded locally can use
+`DB_SSL_CA=C:/Users/your-name/CareerKraft/certs/aiven-ca.pem`.
+Alternatively, put the complete PEM certificate in `DB_SSL_CA`, surrounded by
+quotes in `.env`. The value can span real newlines or use literal `\n` between
+certificate lines:
+
+```dotenv
+DB_SSL=true
+DB_SSL_CA="-----BEGIN CERTIFICATE-----\nREPLACE WITH YOUR CA CERTIFICATE BODY\n-----END CERTIFICATE-----"
+```
+
+Use the certificate supplied by your database provider, including its BEGIN and
+END lines. A nonempty `DB_SSL_CA` enables TLS even if `DB_SSL` is unset or false.
+The server certificate and hostname are verified for every TLS connection.
+
+On Render, add the MySQL variables under the web service's Environment settings.
+For a CA file, add a Secret File named `aiven-ca.pem`, paste the complete PEM
+certificate into its Contents field, and set `DB_SSL_CA=/etc/secrets/aiven-ca.pem`
+and `DB_SSL=true`. Render makes the file available at runtime; see
+[Render's secret file instructions](https://render.com/docs/configure-environment-variables#secret-files).
+An inline `DB_SSL_CA` environment value also works; paste the PEM contents without
+the surrounding `.env` quotes when entering a value directly in the dashboard.
+Save and redeploy after changing these settings.
 
 If `data/accounts.sqlite` contains your existing accounts, migrate before the
 first MySQL startup. Stop every CareerKraft process that uses either database
