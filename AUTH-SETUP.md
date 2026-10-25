@@ -1,6 +1,6 @@
 # Run CareerKraft
 
-Requires Node.js 24 or newer and a running MySQL 8.4 or newer server.
+Requires Node.js 24 or newer and a running MySQL 8.0.16 or newer server.
 On Windows, install MySQL Community Server and configure its Windows service
 with [MySQL's Windows installation instructions](https://dev.mysql.com/doc/refman/8.4/en/windows-installation.html).
 Start the service before starting CareerKraft.
