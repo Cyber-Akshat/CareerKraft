@@ -4,7 +4,8 @@
     "start": "node --env-file-if-exists=.env server.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "node scripts/browser-audit.js",
-    "test:onboarding": "node --test tests/onboarding.test.js"
+    "test:onboarding": "node --test tests/onboarding.test.js",
+    "db:migrate:mysql": "node --env-file-if-exists=.env scripts/migrate-sqlite-to-mysql.js"
   },
   "engines": {
     "node": ">=24"
@@ -27,6 +28,7 @@
     "google-auth-library": "^10.3.0",
     "jszip": "^3.10.2",
     "multer": "^2.4.0",
+    "mysql2": "^3.24.6",
     "pdf-parse": "^2.4.5",
     "saxes": "^6.0.0",
     "yauzl": "^3.4.0"

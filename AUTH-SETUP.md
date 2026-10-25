@@ -1,21 +1,89 @@
 # Run CareerKraft
 
-Requires Node.js 24 or newer. In PowerShell:
+Requires Node.js 24 or newer and a running MySQL 8.4 or newer server.
+On Windows, install MySQL Community Server and configure its Windows service
+with [MySQL's Windows installation instructions](https://dev.mysql.com/doc/refman/8.4/en/windows-installation.html).
+Start the service before starting CareerKraft.
+
+Connect through MySQL Workbench or the MySQL command-line client as an
+administrator and create a dedicated database and account. Replace the sample
+password with your own password:
+
+```sql
+CREATE DATABASE careerkraft CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE USER 'careerkraft'@'localhost' IDENTIFIED BY 'replace-with-your-own-password';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+  ON careerkraft.* TO 'careerkraft'@'localhost';
+```
+
+For a remote database, use the host/account access settings supplied by your
+database provider. See MySQL's [CREATE USER](https://dev.mysql.com/doc/refman/8.4/en/create-user.html)
+and [GRANT](https://dev.mysql.com/doc/refman/8.4/en/grant.html) documentation.
+CareerKraft creates its tables in the configured database; it does not create
+the database or the MySQL account.
+
+In PowerShell:
 
 ```powershell
 npm.cmd install
 # Only if .env does not already exist:
 Copy-Item .env.example .env
+```
+
+Set the MySQL connection in `.env`, keeping the rest of your existing settings:
+
+```dotenv
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=careerkraft
+DB_USER=careerkraft
+DB_PASSWORD=your-own-password
+```
+
+Quote a password in `.env` if it contains `#` or spaces. Alternatively, set
+`DATABASE_URL=mysql://user:password@host:3306/careerkraft`; a nonempty
+`DATABASE_URL` takes precedence over the individual fields. URL credentials
+must be percent-encoded when they contain special characters. Keep database
+credentials on the server. For a remote MySQL server requiring TLS, set
+`DB_SSL=true`; set `DB_SSL_CA` to its CA certificate file when your provider
+requires a private CA. Certificate verification stays enabled.
+
+If `data/accounts.sqlite` contains your existing accounts, migrate before the
+first MySQL startup. Stop every CareerKraft process that uses either database
+and keep a backup of `data/`. With MySQL configured and the destination database
+empty, run:
+
+```powershell
+npm.cmd run db:migrate:mysql
+# To migrate another SQLite file:
+# npm.cmd run db:migrate:mysql -- --source C:\path\to\accounts.sqlite
 npm.cmd start
 ```
+
+The migration reads SQLite in a read-only transaction, creates the MySQL tables,
+and copies accounts, password hashes, sessions, settings, roadmaps, evidence
+records, skills, conversations and authentication limits while preserving IDs.
+It refuses a destination that already contains data, checks row counts, and
+commits the copied rows together. A failed import rolls back its rows; empty
+tables created during setup may remain. The SQLite file stays unchanged.
+Unsupported populated columns or invalid relationships stop the migration
+instead of dropping data. Existing private avatar/evidence files remain in
+`data/` and must be retained with the application.
+
+For a fresh installation, skip the migration and run `npm.cmd start` after
+configuring MySQL. Application startup always uses MySQL and does not import
+SQLite automatically. The explicit SQLite backend is used by isolated tests.
+To connect from PyCharm's Database window, use the `careerkraft` MySQL datasource
+at `localhost:3306` and enter the same user/password there. Passwords are not
+stored in the shared datasource XML.
 
 Open http://localhost:3000/auth.html. PyCharm's static preview on port 63342
 cannot handle the authentication API. The Node server serves the website and API
 together. All authentication pages use auth-api.js, then their page script.
 
 Accounts, profiles, career assessments, ranked career matches, selected careers
-and early-access signups are stored in the app-owned SQLite database at
-data/accounts.sqlite. No Supabase URL or key is needed. Sessions use HttpOnly
+and early-access signups are stored in the configured MySQL database.
+No Supabase URL or key is needed. Sessions use HttpOnly
 cookies. Verification and password reset links expire and can be used once;
 resets revoke existing sessions. Existing Supabase accounts are not migrated.
 
@@ -84,8 +152,10 @@ NODE_ENV=production, MAIL_MODE=brevo and the public HTTPS APP_URL. Set BREVO_API
 and the verified MAIL_FROM in the host's environment too: Render does not deploy
 your local .env file. The server binds to 0.0.0.0 and uses the host's PORT, with
 3000 as the local fallback.
-This SQLite setup is for a single server instance. A public rollout needs a
-database backup and account migration plan.
+Configure the MySQL variables on your host as well; your local `.env` is not
+deployed automatically. Use persistent storage for private evidence/avatar files
+and maintain backups of both MySQL and those files. Multiple app instances need
+access to the same private file storage as well as the same MySQL database.
 
 ## Authentication security
 
@@ -104,7 +174,7 @@ Unicode, spaces and password-manager paste are supported; passwords are never
 trimmed or silently changed. This local screen is not a comprehensive breached
 password database. Existing shorter passwords can still be verified and upgraded.
 
-Authentication rate limits are stored in SQLite and survive process restarts:
+Authentication rate limits are stored in MySQL and survive process restarts:
 
 | Request | Per IP | Per normalized email |
 | --- | --- | --- |
@@ -117,8 +187,8 @@ Authentication rate limits are stored in SQLite and survive process restarts:
 Attempts count even when invalid or successful. Email identities and IP buckets
 are hashed before storage, IPv6 network addresses are grouped, and the store is
 bounded. Limit responses are generic JSON with Retry-After. The existing general
-API limit also applies. This is a single-instance SQLite deployment; a deployment
-with multiple server instances needs a shared rate-limit and session store.
+API limit also applies. Authentication limits and sessions share the configured
+MySQL database across app instances; the general API limit remains per process.
 
 Login failures use the same status, message and code for incorrect, missing,
 unverified, Google-only and damaged-password accounts. Valid registration

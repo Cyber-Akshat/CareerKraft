@@ -91,9 +91,11 @@ function validateJsonBody(req, res, next) {
 }
 
 function createAuthSecurity({ db, production = false, base = '', options = {} }) {
-  db.exec(`CREATE TABLE IF NOT EXISTS auth_rate_limits (
-    key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL
-  ); CREATE INDEX IF NOT EXISTS idx_auth_rate_limits_reset ON auth_rate_limits(reset_at);`);
+  if (db.dialect !== 'mysql') {
+    db.exec(`CREATE TABLE IF NOT EXISTS auth_rate_limits (
+      key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL
+    ); CREATE INDEX IF NOT EXISTS idx_auth_rate_limits_reset ON auth_rate_limits(reset_at);`);
+  }
   const overrides = options.authSecurityLimits || {};
   const limits = {};
   for (const [name, defaultValue] of Object.entries(LIMITS)) {
@@ -115,8 +117,7 @@ function createAuthSecurity({ db, production = false, base = '', options = {} })
   const increment = db.prepare(`INSERT INTO auth_rate_limits(key,count,reset_at) VALUES (?,1,?)
     ON CONFLICT(key) DO UPDATE SET
       count=CASE WHEN auth_rate_limits.reset_at<=? THEN 1 ELSE auth_rate_limits.count+1 END,
-      reset_at=CASE WHEN auth_rate_limits.reset_at<=? THEN excluded.reset_at ELSE auth_rate_limits.reset_at END
-    RETURNING count,reset_at`);
+      reset_at=CASE WHEN auth_rate_limits.reset_at<=? THEN excluded.reset_at ELSE auth_rate_limits.reset_at END`);
   let lastCleanup = -Infinity;
 
   function reject(res, retryAfter) {
@@ -126,45 +127,53 @@ function createAuthSecurity({ db, production = false, base = '', options = {} })
   }
 
   function limiter(...buckets) {
-    return function durableAuthLimit(req, res, next) {
+    return async function durableAuthLimit(req, res, next) {
       let inTransaction = false;
       let retryAfter = null;
       let cleanedAt = null;
       try {
         const timestamp = now();
         if (!Number.isSafeInteger(timestamp) || timestamp < 0) throw new Error('Invalid authentication clock.');
-        db.exec('BEGIN IMMEDIATE');
+        await db.exec('BEGIN IMMEDIATE');
         inTransaction = true;
+        if (db.dialect === 'mysql') {
+          // A shared row serializes capacity checks across server processes,
+          // including the first request when no rate-limit buckets exist yet.
+          if (!await db.prepare('SELECT id FROM auth_rate_limit_locks WHERE id=1 FOR UPDATE').get()) {
+            throw new Error('Authentication rate-limit lock is unavailable.');
+          }
+        }
         if (timestamp - lastCleanup >= MINUTE || timestamp < lastCleanup) {
-          cleanup.run(timestamp);
+          await cleanup.run(timestamp);
           cleanedAt = timestamp;
         }
         for (const name of buckets) {
           const { limit, windowMs } = limits[name];
           const identity = name.endsWith('Account') ? accountIdentity(req.body?.email) : requestIP(req);
           const key = rateKey(name, identity);
-          if (!find.get(key) && rowCount.get().count >= maxKeys) {
+          if (!await find.get(key) && (await rowCount.get()).count >= maxKeys) {
             // Reclaim expired windows before refusing new identities. Capacity is
             // checked inside the same write transaction as the atomic increment.
-            cleanup.run(timestamp);
+            await cleanup.run(timestamp);
             cleanedAt = timestamp;
-            if (rowCount.get().count >= maxKeys) {
-              retryAfter = Math.max(1, ((oldestReset.get().reset_at || timestamp + MINUTE) - timestamp) / 1000);
+            if ((await rowCount.get()).count >= maxKeys) {
+              retryAfter = Math.max(1, (((await oldestReset.get()).reset_at || timestamp + MINUTE) - timestamp) / 1000);
               break;
             }
           }
-          const row = increment.get(key, timestamp + windowMs, timestamp, timestamp);
+          await increment.run(key, timestamp + windowMs, timestamp, timestamp);
+          const row = await find.get(key);
           if (row.count > limit) {
             retryAfter = (row.reset_at - timestamp) / 1000;
             // An already-blocked IP cannot allocate arbitrary account buckets.
             break;
           }
         }
-        db.exec('COMMIT');
+        await db.exec('COMMIT');
         inTransaction = false;
         if (cleanedAt !== null) lastCleanup = cleanedAt;
       } catch {
-        if (inTransaction) { try { db.exec('ROLLBACK'); } catch {} }
+        if (inTransaction) { try { await db.exec('ROLLBACK'); } catch {} }
         // A busy/unavailable persistent store must not disable authentication limits.
         return reject(res, 60);
       }

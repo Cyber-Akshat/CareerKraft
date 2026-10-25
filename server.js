@@ -8,7 +8,7 @@ const { MAX_EVIDENCE_FILE_SIZE, inspectEvidenceFile, extractUploadedEvidence } =
 const { createMediaEvidenceProcessor } = require('./media-evidence');
 const { isAllowedEvidenceFilename } = require('./evidence-policy');
 const { rateLimit } = require('express-rate-limit');
-const { DatabaseSync } = require('node:sqlite');
+const { createDatabase } = require('./database');
 const { randomBytes, createHash } = require('node:crypto');
 const { isIP } = require('node:net');
 const { mkdirSync, writeFileSync, unlinkSync, existsSync } = require('node:fs');
@@ -553,7 +553,8 @@ function createApp(options = {}) {
     try { unlinkSync(filePath); }
     catch (error) { if (error.code !== 'ENOENT') console.error('Could not remove a replaced evidence file.'); }
   }
-  const db = new DatabaseSync(options.database || path.join(dataDir, 'accounts.sqlite'));
+  const db = createDatabase(options);
+  if (db.dialect === 'sqlite') {
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
       password TEXT, verified INTEGER NOT NULL DEFAULT 0, google_sub TEXT UNIQUE, created_at INTEGER NOT NULL);
@@ -719,6 +720,24 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   if (!roadmapColumns.some(column => column.name === 'updated_at')) {
     db.exec('ALTER TABLE roadmaps ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0; UPDATE roadmaps SET updated_at=created_at WHERE updated_at=0;');
   }
+  }
+  const ready = db.dialect === 'mysql' ? db.ready.then(() => db.scope(async () => {
+    const careerIds = Object.keys(roadmapTemplates);
+    if (careerIds.length) {
+      await db.prepare(`UPDATE roadmap_steps SET evidence_required=1 WHERE evidence_required<>1
+        AND level='beginner' AND roadmap_id IN
+        (SELECT id FROM roadmaps WHERE career_id IN (${careerIds.map(() => '?').join(',')}))`).run(...careerIds);
+    }
+    await db.prepare(`UPDATE account_settings SET preferences_saved=1 WHERE preferences_saved=0 AND
+      (theme IS NOT NULL OR reduced_motion<>0 OR dyslexia_font<>0 OR font_size<>'default'
+      OR contrast<>'default' OR saturation<>'default' OR cursor_size<>'default')`).run();
+    if (!production && await db.prepare('SELECT id FROM users WHERE id=?').get(1)) {
+      await db.prepare('INSERT OR IGNORE INTO reviewers(user_id,created_at) VALUES (?,?)').run(1, Date.now());
+    }
+  })) : db.ready;
+  app.use((req, res, next) => db.scope(() => {
+    Promise.resolve(ready).then(() => next(), next);
+  }));
   const sendWithBrevo = createBrevoMailer({
     apiKey: process.env.BREVO_API_KEY || process.env.BREVO,
     from: process.env.MAIL_FROM,
@@ -732,9 +751,9 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     }
     await sendWithBrevo(mail);
   });
-  const safeUser = user => {
+  const safeUser = async user => {
     if (!user) return null;
-    const settings = db.prepare('SELECT * FROM account_settings WHERE user_id=?').get(user.id);
+    const settings = (await db.prepare('SELECT * FROM account_settings WHERE user_id=?').get(user.id));
     return { id: user.id, email: user.email, display_name: user.name,
       email_confirmed_at: user.verified ? true : null,
       dashboardTourSeen: Boolean(settings?.dashboard_tour_seen),
@@ -749,78 +768,91 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     return /^[A-Za-z0-9_-]{1,256}$/.test(value) ? value : '';
   };
   const clearSessionCookie = res => res.clearCookie(sessionCookieName, sessionCookieOptions);
-  const currentUser = req => {
+  const currentUser = async req => {
     const secret = getCookie(req, 'ck_session');
     if (!secret) return undefined;
     const hash = digest(secret);
     const now = Date.now();
-    const user = db.prepare(`SELECT users.*, sessions.expires AS session_expires,
+    const user = (await db.prepare(`SELECT users.*, sessions.expires AS session_expires,
       session_activity.created_at AS session_created, session_activity.last_seen_at AS session_seen
       FROM sessions JOIN users ON users.id=sessions.user_id
       LEFT JOIN session_activity ON session_activity.hash=sessions.hash
-      WHERE sessions.hash=? AND users.verified=1`).get(hash);
+      WHERE sessions.hash=? AND users.verified=1`).get(hash));
     if (!user) return undefined;
     if (user.session_expires <= now || (user.session_created !== null &&
         (user.session_created + sessionMaxAgeMs <= now || user.session_seen + sessionIdleMs <= now))) {
-      db.prepare('DELETE FROM sessions WHERE hash=?').run(hash);
+      (await db.prepare('DELETE FROM sessions WHERE hash=?').run(hash));
       return undefined;
     }
     if (user.session_created === null) {
       // Existing sessions acquire the new idle and absolute limits on first use.
-      db.prepare('INSERT OR IGNORE INTO session_activity VALUES (?,?,?)').run(hash, now, now);
-      if (user.session_expires > now + sessionMaxAgeMs) db.prepare('UPDATE sessions SET expires=? WHERE hash=?').run(now + sessionMaxAgeMs, hash);
+      (await db.prepare('INSERT OR IGNORE INTO session_activity VALUES (?,?,?)').run(hash, now, now));
+      if (user.session_expires > now + sessionMaxAgeMs) (await db.prepare('UPDATE sessions SET expires=? WHERE hash=?').run(now + sessionMaxAgeMs, hash));
     } else if (user.session_seen < now - 60000) {
-      db.prepare('UPDATE session_activity SET last_seen_at=? WHERE hash=?').run(now, hash);
+      (await db.prepare('UPDATE session_activity SET last_seen_at=? WHERE hash=?').run(now, hash));
     }
     return user;
   };
-  const startSession = (res, user, req) => {
+  const startSession = async (res, user, req) => {
     const now = Date.now();
-    if (req) db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(getCookie(req, 'ck_session')));
-    db.prepare('DELETE FROM sessions WHERE expires<=?').run(now);
+    if (req) (await db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(getCookie(req, 'ck_session'))));
+    (await db.prepare('DELETE FROM sessions WHERE expires<=?').run(now));
     const value = token();
     const hash = digest(value);
-    db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(hash, user.id, now + sessionMaxAgeMs);
-    db.prepare('INSERT INTO session_activity VALUES (?,?,?)').run(hash, now, now);
-    db.prepare(`DELETE FROM sessions WHERE user_id=? AND hash IN (
-      SELECT hash FROM sessions WHERE user_id=? AND hash<>?
-      ORDER BY expires DESC,rowid DESC LIMIT -1 OFFSET 9)`).run(user.id, user.id, hash);
+    (await db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(hash, user.id, now + sessionMaxAgeMs));
+    (await db.prepare('INSERT INTO session_activity VALUES (?,?,?)').run(hash, now, now));
+    const previousSessions = await db.prepare(`SELECT hash FROM sessions
+      WHERE user_id=? AND hash<>? ORDER BY expires DESC,hash DESC`).all(user.id, hash);
+    for (const previous of previousSessions.slice(9)) {
+      await db.prepare('DELETE FROM sessions WHERE user_id=? AND hash=?').run(user.id, previous.hash);
+    }
     res.cookie(sessionCookieName, value, { ...sessionCookieOptions, maxAge: sessionMaxAgeMs });
     return hash;
   };
-  const rotateSession = (res, req, user, { revokeOthers = false } = {}) => {
-    if (revokeOthers) db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
-    return startSession(res, user, req);
+  const rotateSession = async (res, req, user, { revokeOthers = false } = {}) => {
+    if (revokeOthers) (await db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id));
+    return (await startSession(res, user, req));
   };
   async function mailToken(user, purpose) {
-    const current = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
-    // A queued message must not recreate recovery access after an account change.
-    if (!current || current.email !== user.email || current.password !== user.password ||
-        current.created_at !== user.created_at || (purpose === 'reset' ? !current.verified : current.verified)) return;
-    user = current;
     const value = token();
-    db.exec('BEGIN IMMEDIATE');
+    await db.exec('BEGIN IMMEDIATE');
     try {
-      db.prepare('DELETE FROM tokens WHERE user_id=? AND purpose=?').run(user.id, purpose);
-      db.prepare('INSERT INTO tokens VALUES (?,?,?,?)').run(digest(value), user.id, purpose, Date.now() + EMAIL_TOKEN_LIFETIME);
-      db.exec('COMMIT');
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+      const current = await db.prepare('SELECT * FROM users WHERE id=?' +
+        (db.dialect === 'mysql' ? ' FOR UPDATE' : '')).get(user.id);
+      // A queued message must not recreate recovery access after an account change.
+      if (!current || current.email !== user.email || current.password !== user.password ||
+          current.created_at !== user.created_at || (purpose === 'reset' ? !current.verified : current.verified)) {
+        await db.exec('ROLLBACK');
+        return;
+      }
+      user = current;
+      await db.prepare('DELETE FROM tokens WHERE user_id=? AND purpose=?').run(user.id, purpose);
+      await db.prepare('INSERT INTO tokens VALUES (?,?,?,?)').run(digest(value), user.id, purpose, Date.now() + EMAIL_TOKEN_LIFETIME);
+      await db.exec('COMMIT');
+    } catch (error) { await db.exec('ROLLBACK'); throw error; }
     const page = purpose === 'verify' ? 'verify-email.html' : 'reset-password.html';
     try {
       await send({ to: user.email, subject: purpose === 'verify' ? 'Verify your CareerKraft email' : 'Reset your CareerKraft password',
         text: `Hello ${user.name},\n\n${purpose === 'verify' ? 'Confirm your email' : 'Reset your password'} using this link:\n${base}/${page}?token=${value}\n\nThis link expires in 60 minutes and can be used once. Requesting a new email invalidates the previous link. If you did not request it, ignore this email.` });
-    } catch (error) { db.prepare('DELETE FROM tokens WHERE hash=?').run(digest(value)); throw error; }
+    } catch (error) { (await db.prepare('DELETE FROM tokens WHERE hash=?').run(digest(value))); throw error; }
   }
-  function consume(value, purpose, action) {
+  async function consume(value, purpose, action) {
     if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) return false;
-    db.exec('BEGIN IMMEDIATE');
+    (await db.exec('BEGIN IMMEDIATE'));
     try {
-      const row = db.prepare('SELECT * FROM tokens WHERE hash=? AND purpose=? AND expires>?').get(digest(value), purpose, Date.now());
-      if (!row) { db.exec('ROLLBACK'); return false; }
-      action(row.user_id);
-      db.prepare('DELETE FROM tokens WHERE user_id=? AND purpose=?').run(row.user_id, purpose);
-      db.exec('COMMIT'); return row.user_id;
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+      let row = await db.prepare('SELECT * FROM tokens WHERE hash=? AND purpose=? AND expires>?')
+        .get(digest(value), purpose, Date.now());
+      if (row && db.dialect === 'mysql') {
+        // Lock accounts before tokens, matching password changes and queued mail.
+        await db.prepare('SELECT id FROM users WHERE id=? FOR UPDATE').get(row.user_id);
+        row = await db.prepare('SELECT * FROM tokens WHERE hash=? AND purpose=? AND expires>? FOR UPDATE')
+          .get(digest(value), purpose, Date.now());
+      }
+      if (!row) { (await db.exec('ROLLBACK')); return false; }
+      await action(row.user_id);
+      (await db.prepare('DELETE FROM tokens WHERE user_id=? AND purpose=?').run(row.user_id, purpose));
+      (await db.exec('COMMIT')); return row.user_id;
+    } catch (error) { (await db.exec('ROLLBACK')); throw error; }
   }
   // Delivery runs outside the HTTP response so provider latency cannot disclose account existence.
   const emailJobs = [];
@@ -829,14 +861,14 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     while (activeEmails < 2 && emailJobs.length) {
       const job = emailJobs.shift();
       activeEmails += 1;
-      Promise.resolve().then(job).catch(() => {
+      Promise.resolve().then(() => db.scope(job)).catch(() => {
         console.error('Authentication email delivery failed.');
       }).finally(() => { activeEmails -= 1; pumpEmails(); });
     }
   }
   function queueEmail(user, purpose) {
     if (!user || emailJobs.length >= 16) return;
-    emailJobs.push(() => mailToken(user, purpose));
+    emailJobs.push(async () => (await mailToken(user, purpose)));
     pumpEmails();
   }
   const authSecurity = createAuthSecurity({ app, db, production, base, options });
@@ -868,29 +900,39 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     if (!validateNewPassword(password)) return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
     const encoded = await hashPassword(password);
     // A duplicate or a concurrent registration has exactly the same public response.
-    const result = db.prepare('INSERT OR IGNORE INTO users(email,name,password,created_at) VALUES (?,?,?,?)').run(email, name.trim(), encoded, Date.now());
-    if (result.changes) queueEmail(db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid), 'verify');
+    const result = (await db.prepare('INSERT OR IGNORE INTO users(email,name,password,created_at) VALUES (?,?,?,?)').run(email, name.trim(), encoded, Date.now()));
+    if (result.changes) queueEmail((await db.prepare('SELECT * FROM users WHERE id=?').get(result.lastInsertRowid)), 'verify');
     res.status(202).json({ success: true, session: null, message: registrationMessage });
   });
   app.post('/api/login', authSecurity.loginLimit, async (req, res) => {
     const password = req.body.password;
     const email = normalizeEmail(req.body.email);
-    const user = validEmail(email) ? db.prepare('SELECT * FROM users WHERE email=?').get(email) : null;
+    const user = validEmail(email) ? (await db.prepare('SELECT * FROM users WHERE email=?').get(email)) : null;
     const verification = await verifyPassword(password, user?.password);
     if (!verification.valid || !user?.verified) return invalidCredentials(res);
     const replacement = verification.needsRehash ? await hashPassword(password) : null;
-    const current = db.prepare('SELECT * FROM users WHERE id=? AND verified=1').get(user.id);
-    if (!current || current.password !== user.password || current.email !== user.email) return invalidCredentials(res);
-    if (replacement) {
-      db.prepare('UPDATE users SET password=? WHERE id=? AND password=?').run(replacement, user.id, user.password);
-      current.password = replacement;
-    }
-    rotateSession(res, req, current);
-    res.json({ user: safeUser(current), session: { user: safeUser(current) } });
+    let current;
+    await db.exec('BEGIN IMMEDIATE');
+    try {
+      current = await db.prepare('SELECT * FROM users WHERE id=? AND verified=1' +
+        (db.dialect === 'mysql' ? ' FOR UPDATE' : '')).get(user.id);
+      if (!current || current.password !== user.password || current.email !== user.email) {
+        await db.exec('ROLLBACK');
+        return invalidCredentials(res);
+      }
+      if (replacement) {
+        await db.prepare('UPDATE users SET password=? WHERE id=? AND password=?').run(replacement, user.id, user.password);
+        current.password = replacement;
+      }
+      await rotateSession(res, req, current);
+      await db.exec('COMMIT');
+    } catch (error) { await db.exec('ROLLBACK'); throw error; }
+    const visibleUser = await safeUser(current);
+    res.json({ user: visibleUser, session: { user: visibleUser } });
   });
-  app.get('/api/session', (req, res) => { const user = safeUser(currentUser(req)); res.json({ user, session: user ? { user } : null }); });
-  app.post('/api/logout', (req, res) => {
-    db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(getCookie(req, 'ck_session')));
+  app.get('/api/session', async (req, res) => { const user = (await safeUser((await currentUser(req)))); res.json({ user, session: user ? { user } : null }); });
+  app.post('/api/logout', async (req, res) => {
+    (await db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(getCookie(req, 'ck_session'))));
     clearSessionCookie(res); res.json({ success: true });
   });
   /* =========================================
@@ -900,17 +942,17 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
      ROADMAP JOURNEY SUMMARY
   ========================================= */
   const ROADMAP_LEVELS = ['beginner', 'intermediate', 'advanced'];
-  function buildRoadmapJourney({ userId, roadmap }) {
+  async function buildRoadmapJourney({ userId, roadmap }) {
     const currentLevel = roadmap.current_level || 'beginner';
-    const levels = ROADMAP_LEVELS.map(level => {
-      const stats = db.prepare(`
+    const levels = (await Promise.all(ROADMAP_LEVELS.map(async level => {
+      const stats = (await db.prepare(`
         SELECT COUNT(roadmap_steps.id) AS total,
           SUM(CASE WHEN roadmap_progress.status = 'completed' THEN 1 ELSE 0 END) AS completed
         FROM roadmap_steps
         LEFT JOIN roadmap_progress ON roadmap_progress.roadmap_step_id = roadmap_steps.id
           AND roadmap_progress.user_id = ?
         WHERE roadmap_steps.roadmap_id = ? AND roadmap_steps.level = ?
-      `).get(userId, roadmap.id, level);
+      `).get(userId, roadmap.id, level));
       const total = Number(stats?.total || 0);
       const completed = Number(stats?.completed || 0);
       const status = total > 0 && completed === total ? 'completed'
@@ -920,7 +962,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
         totalSteps: total, completedSteps: completed,
         percent: total > 0 ? Math.round(completed / total * 100) : 0, status
       };
-    });
+    })));
     return { currentLevel, pathwayCompleted: roadmap.status === 'completed', levels };
   }
 
@@ -928,7 +970,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
      CREATE LUMIA BEGINNER ROADMAP
   ========================================= */
   async function createLumiaBeginnerRoadmap({ userId, career }) {
-    const assessmentRow = db.prepare('SELECT interests, subjects, strengths, work_style FROM career_assessments WHERE user_id = ?').get(userId);
+    const assessmentRow = (await db.prepare('SELECT interests, subjects, strengths, work_style FROM career_assessments WHERE user_id = ?').get(userId));
     function safeArray(value) {
       try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) ? parsed : []; }
       catch { return []; }
@@ -941,31 +983,32 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       career, assessment, level: 'beginner', previousJourney: null
     });
     const now = Date.now();
-    db.exec('BEGIN IMMEDIATE');
+    (await db.exec('BEGIN IMMEDIATE'));
     try {
       // Recheck after generation to keep concurrent requests from creating duplicates.
-      const existing = db.prepare('SELECT id FROM roadmaps WHERE user_id = ? AND career_id = ?').get(userId, career.id);
+      if (db.dialect === 'mysql') await db.prepare('SELECT id FROM users WHERE id=? FOR UPDATE').get(userId);
+      const existing = (await db.prepare('SELECT id FROM roadmaps WHERE user_id = ? AND career_id = ?').get(userId, career.id));
       if (existing) {
-        db.exec('COMMIT');
+        (await db.exec('COMMIT'));
         return { roadmapId: existing.id, existing: true, generated: false, level: 'beginner' };
       }
-      const result = db.prepare(`INSERT INTO roadmaps
+      const result = (await db.prepare(`INSERT INTO roadmaps
         (user_id, career_id, career_title, status, current_level, created_at, updated_at)
-        VALUES (?, ?, ?, 'active', 'beginner', ?, ?)`).run(userId, career.id, career.title, now, now);
+        VALUES (?, ?, ?, 'active', 'beginner', ?, ?)`).run(userId, career.id, career.title, now, now));
       const roadmapId = Number(result.lastInsertRowid);
       const insertStep = db.prepare(`INSERT INTO roadmap_steps
         (roadmap_id, phase_number, phase_title, step_number, title, description,
          estimated_minutes, activity_type, evidence_required, level, level_step_number)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'beginner', ?)`);
-      generated.steps.forEach((step, index) => {
-        const inserted = insertStep.run(roadmapId, step.phase, step.phaseTitle, index + 1,
-          step.title, step.description, step.minutes, step.type, step.evidence ? 1 : 0, index + 1);
-        db.prepare(`INSERT INTO roadmap_progress (user_id, roadmap_step_id, status)
-          VALUES (?, ?, 'not_started')`).run(userId, Number(inserted.lastInsertRowid));
-      });
-      db.exec('COMMIT');
+      for (const [index, step] of generated.steps.entries()) {
+        const inserted = (await insertStep.run(roadmapId, step.phase, step.phaseTitle, index + 1,
+          step.title, step.description, step.minutes, step.type, step.evidence ? 1 : 0, index + 1));
+        (await db.prepare(`INSERT INTO roadmap_progress (user_id, roadmap_step_id, status)
+          VALUES (?, ?, 'not_started')`).run(userId, Number(inserted.lastInsertRowid)));
+      };
+      (await db.exec('COMMIT'));
       return { roadmapId, generated: true, level: 'beginner', stepsCreated: generated.steps.length };
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    } catch (error) { (await db.exec('ROLLBACK')); throw error; }
   }
 
   function getNextRoadmapLevel(level) {
@@ -974,14 +1017,14 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     return null;
   }
 
-  function getRoadmapLevelProgress({ userId, roadmapId, level }) {
-    const steps = db.prepare(`
+  async function getRoadmapLevelProgress({ userId, roadmapId, level }) {
+    const steps = (await db.prepare(`
       SELECT roadmap_steps.id, COALESCE(roadmap_progress.status, 'not_started') AS status
       FROM roadmap_steps
       LEFT JOIN roadmap_progress ON roadmap_progress.roadmap_step_id = roadmap_steps.id
         AND roadmap_progress.user_id = ?
       WHERE roadmap_steps.roadmap_id = ? AND roadmap_steps.level = ?
-    `).all(userId, roadmapId, level);
+    `).all(userId, roadmapId, level));
     const completed = steps.filter(step => step.status === 'completed').length;
     return { total: steps.length, completed, complete: steps.length > 0 && completed === steps.length };
   }
@@ -989,23 +1032,23 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   /* =========================================
      BUILD LUMIA JOURNEY CONTEXT
   ========================================= */
-  function buildPreviousJourney({ userId, roadmapId }) {
-    const completedActivities = db.prepare(`
+  async function buildPreviousJourney({ userId, roadmapId }) {
+    const completedActivities = (await db.prepare(`
       SELECT roadmap_steps.title, roadmap_steps.level, roadmap_steps.activity_type
       FROM roadmap_steps JOIN roadmap_progress ON roadmap_progress.roadmap_step_id = roadmap_steps.id
       WHERE roadmap_steps.roadmap_id = ? AND roadmap_progress.user_id = ?
         AND roadmap_progress.status = 'completed'
       ORDER BY roadmap_steps.step_number
-    `).all(roadmapId, userId);
-    const skills = db.prepare(`SELECT skill_name, verified_count FROM user_skills
-      WHERE user_id = ? ORDER BY verified_count DESC, last_verified_at DESC LIMIT 20`).all(userId);
-    const feedback = db.prepare(`
+    `).all(roadmapId, userId));
+    const skills = (await db.prepare(`SELECT skill_name, verified_count FROM user_skills
+      WHERE user_id = ? ORDER BY verified_count DESC, last_verified_at DESC LIMIT 20`).all(userId));
+    const feedback = (await db.prepare(`
       SELECT evidence_submissions.feedback FROM evidence_submissions
       JOIN roadmap_steps ON roadmap_steps.id = evidence_submissions.roadmap_step_id
       WHERE evidence_submissions.user_id = ? AND roadmap_steps.roadmap_id = ?
         AND evidence_submissions.feedback IS NOT NULL AND TRIM(evidence_submissions.feedback) != ''
       ORDER BY evidence_submissions.reviewed_at DESC LIMIT 10
-    `).all(userId, roadmapId);
+    `).all(userId, roadmapId));
     return {
       completedActivities: completedActivities.map(activity => ({
         title: activity.title, level: activity.level, type: activity.activity_type
@@ -1027,11 +1070,11 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     }
   }
 
-  function buildLumiaUserContext({ userId }) {
-    const assessmentRow = db.prepare(`
+  async function buildLumiaUserContext({ userId }) {
+    const assessmentRow = (await db.prepare(`
       SELECT interests, subjects, strengths, work_style
       FROM career_assessments WHERE user_id = ?
-    `).get(userId);
+    `).get(userId));
     const assessment = {
       interests: safeParseArray(assessmentRow?.interests),
       subjects: safeParseArray(assessmentRow?.subjects),
@@ -1039,11 +1082,11 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       workStyle: safeParseArray(assessmentRow?.work_style)
     };
 
-    const roadmap = db.prepare(`
+    const roadmap = (await db.prepare(`
       SELECT id, career_id, career_title, status, current_level, created_at, updated_at
       FROM roadmaps WHERE user_id = ?
       ORDER BY updated_at DESC, id DESC LIMIT 1
-    `).get(userId);
+    `).get(userId));
     if (!roadmap) {
       return {
         assessment, career: null, roadmap: null, currentActivity: null,
@@ -1052,7 +1095,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     }
 
     const currentLevel = roadmap.current_level || 'beginner';
-    const currentSteps = db.prepare(`
+    const currentSteps = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.title, roadmap_steps.description,
         roadmap_steps.activity_type, roadmap_steps.evidence_required,
         roadmap_steps.level, roadmap_steps.level_step_number,
@@ -1062,11 +1105,11 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
         AND roadmap_progress.user_id = ?
       WHERE roadmap_steps.roadmap_id = ? AND roadmap_steps.level = ?
       ORDER BY COALESCE(roadmap_steps.level_step_number, roadmap_steps.step_number), roadmap_steps.id
-    `).all(userId, roadmap.id, currentLevel);
+    `).all(userId, roadmap.id, currentLevel));
     const completedCurrentLevel = currentSteps.filter(step => step.status === 'completed');
     const nextStep = currentSteps.find(step => step.status !== 'completed') || null;
 
-    const completedActivities = db.prepare(`
+    const completedActivities = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.title, roadmap_steps.activity_type,
         roadmap_steps.level, roadmap_progress.completed_at
       FROM roadmap_steps
@@ -1074,21 +1117,21 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       WHERE roadmap_steps.roadmap_id = ? AND roadmap_progress.user_id = ?
         AND roadmap_progress.status = 'completed'
       ORDER BY roadmap_progress.completed_at DESC, roadmap_steps.id DESC LIMIT 30
-    `).all(roadmap.id, userId).map(activity => ({
+    `).all(roadmap.id, userId)).map(activity => ({
       title: activity.title, level: activity.level,
       type: activity.activity_type, completedAt: activity.completed_at
     }));
 
-    const verifiedSkills = db.prepare(`
+    const verifiedSkills = (await db.prepare(`
       SELECT id, skill_name, verified_count, first_verified_at, last_verified_at
       FROM user_skills WHERE user_id = ?
       ORDER BY verified_count DESC, last_verified_at DESC, id DESC LIMIT 20
-    `).all(userId).map(skill => ({
+    `).all(userId)).map(skill => ({
       id: skill.id, name: skill.skill_name, verifiedCount: skill.verified_count,
       firstVerifiedAt: skill.first_verified_at, lastVerifiedAt: skill.last_verified_at
     }));
 
-    const recentFeedback = db.prepare(`
+    const recentFeedback = (await db.prepare(`
       SELECT evidence_submissions.feedback, evidence_submissions.status,
         roadmap_steps.title AS activity_title, roadmap_steps.level
       FROM evidence_submissions
@@ -1099,12 +1142,12 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
         AND TRIM(evidence_submissions.feedback) != ''
       ORDER BY COALESCE(evidence_submissions.reviewed_at, evidence_submissions.submitted_at) DESC,
         evidence_submissions.id DESC LIMIT 8
-    `).all(userId, roadmap.id, userId).map(item => ({
+    `).all(userId, roadmap.id, userId)).map(item => ({
       activity: item.activity_title, level: item.level, status: item.status,
       feedback: String(item.feedback || '').trim().slice(0, 800)
     }));
 
-    const journey = buildRoadmapJourney({ userId, roadmap });
+    const journey = (await buildRoadmapJourney({ userId, roadmap }));
     // These fields are context data, not instructions. Callers must treat free text as untrusted.
     return {
       assessment,
@@ -1124,41 +1167,41 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     };
   }
 
-  function createLumiaConversation(userId) {
+  async function createLumiaConversation(userId) {
     const now = Date.now();
-    const result = db.prepare(`INSERT INTO lumia_conversations
+    const result = (await db.prepare(`INSERT INTO lumia_conversations
       (user_id, title, created_at, updated_at)
-      VALUES (?, 'New conversation', ?, ?)`).run(userId, now, now);
-    return db.prepare(`SELECT id, title, created_at, updated_at
+      VALUES (?, 'New conversation', ?, ?)`).run(userId, now, now));
+    return (await db.prepare(`SELECT id, title, created_at, updated_at
       FROM lumia_conversations WHERE id = ? AND user_id = ?`)
-      .get(Number(result.lastInsertRowid), userId);
+      .get(Number(result.lastInsertRowid), userId));
   }
 
-  function getLumiaConversation({ userId, conversationId }) {
+  async function getLumiaConversation({ userId, conversationId }) {
     if (!Number.isSafeInteger(conversationId) || conversationId <= 0) return null;
-    return db.prepare(`SELECT id, title, created_at, updated_at
+    return (await db.prepare(`SELECT id, title, created_at, updated_at
       FROM lumia_conversations WHERE id = ? AND user_id = ?`)
-      .get(conversationId, userId) || null;
+      .get(conversationId, userId)) || null;
   }
 
-  function getLatestLumiaConversation(userId) {
-    return db.prepare(`SELECT id, title, created_at, updated_at
+  async function getLatestLumiaConversation(userId) {
+    return (await db.prepare(`SELECT id, title, created_at, updated_at
       FROM lumia_conversations WHERE user_id = ?
-      ORDER BY updated_at DESC, id DESC LIMIT 1`).get(userId) || null;
+      ORDER BY updated_at DESC, id DESC LIMIT 1`).get(userId)) || null;
   }
 
-  function getLumiaConversationMessages({ userId, conversationId, limit = 30 }) {
+  async function getLumiaConversationMessages({ userId, conversationId, limit = 30 }) {
     const safeLimit = Math.max(1, Math.min(Number(limit) || 30, 50));
-    return db.prepare(`SELECT * FROM (
+    return (await db.prepare(`SELECT * FROM (
       SELECT id, role, content, created_at
       FROM lumia_messages
       WHERE conversation_id = ? AND user_id = ?
       ORDER BY created_at DESC, id DESC
       LIMIT ?
-    ) ORDER BY created_at ASC, id ASC`).all(conversationId, userId, safeLimit);
+    ) AS recent_messages ORDER BY created_at ASC, id ASC`).all(conversationId, userId, safeLimit));
   }
 
-  function buildLumiaPageContext({ userId, pageContext }) {
+  async function buildLumiaPageContext({ userId, pageContext }) {
     if (!pageContext || typeof pageContext !== 'object' || Array.isArray(pageContext)) return null;
     const safePath = typeof pageContext.path === 'string'
       ? pageContext.path.slice(0, 120).replace(/[^a-zA-Z0-9/_.-]/g, '')
@@ -1166,13 +1209,13 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     const stepId = Number(pageContext.stepId);
     let viewedActivity = null;
     if (Number.isSafeInteger(stepId) && stepId > 0) {
-      const activity = db.prepare(`SELECT roadmap_steps.id, roadmap_steps.title,
+      const activity = (await db.prepare(`SELECT roadmap_steps.id, roadmap_steps.title,
         roadmap_steps.description, roadmap_steps.level,
         roadmap_steps.activity_type AS type, roadmap_steps.evidence_required,
         roadmaps.career_title
         FROM roadmap_steps
         JOIN roadmaps ON roadmaps.id = roadmap_steps.roadmap_id
-        WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?`).get(stepId, userId);
+        WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?`).get(stepId, userId));
       if (activity) {
         viewedActivity = {
           id: activity.id, title: activity.title, description: activity.description,
@@ -1214,72 +1257,73 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   }
 
   async function performRoadmapLevelAdvancement({ userId, roadmapId }) {
-    const roadmap = db.prepare(`SELECT id, career_id, career_title, current_level, status
-      FROM roadmaps WHERE id = ? AND user_id = ?`).get(roadmapId, userId);
+    const roadmap = (await db.prepare(`SELECT id, career_id, career_title, current_level, status
+      FROM roadmaps WHERE id = ? AND user_id = ?`).get(roadmapId, userId));
     if (!roadmap) return { advanced: false };
     const currentLevel = roadmap.current_level || 'beginner';
     if (!['beginner', 'intermediate', 'advanced'].includes(currentLevel)) throw new Error('Invalid roadmap level.');
-    const progress = getRoadmapLevelProgress({ userId, roadmapId, level: currentLevel });
+    const progress = (await getRoadmapLevelProgress({ userId, roadmapId, level: currentLevel }));
     if (!progress.complete) return { advanced: false, level: currentLevel, progress };
     const nextLevel = getNextRoadmapLevel(currentLevel);
     if (!nextLevel) {
-      db.prepare(`UPDATE roadmaps SET status = 'completed', updated_at = ?
-        WHERE id = ? AND user_id = ?`).run(Date.now(), roadmapId, userId);
+      (await db.prepare(`UPDATE roadmaps SET status = 'completed', updated_at = ?
+        WHERE id = ? AND user_id = ?`).run(Date.now(), roadmapId, userId));
       return { advanced: false, pathwayCompleted: true, level: 'advanced' };
     }
-    const findNextLevel = () => db.prepare('SELECT id FROM roadmap_steps WHERE roadmap_id = ? AND level = ? LIMIT 1').get(roadmapId, nextLevel);
-    const activateExistingLevel = () => {
-      db.prepare(`UPDATE roadmaps SET current_level = ?, status = 'active', updated_at = ?
-        WHERE id = ? AND user_id = ?`).run(nextLevel, Date.now(), roadmapId, userId);
+    const findNextLevel = async () => (await db.prepare('SELECT id FROM roadmap_steps WHERE roadmap_id = ? AND level = ? LIMIT 1').get(roadmapId, nextLevel));
+    const activateExistingLevel = async () => {
+      (await db.prepare(`UPDATE roadmaps SET current_level = ?, status = 'active', updated_at = ?
+        WHERE id = ? AND user_id = ?`).run(nextLevel, Date.now(), roadmapId, userId));
       return { advanced: true, generated: false, level: nextLevel };
     };
-    if (findNextLevel()) return activateExistingLevel();
+    if ((await findNextLevel())) return (await activateExistingLevel());
     const career = careerCatalog.find(item => item.id === roadmap.career_id);
     if (!career) throw new Error('The roadmap career is not in the CareerKraft catalogue.');
-    const assessmentRow = db.prepare('SELECT interests, subjects, strengths, work_style FROM career_assessments WHERE user_id = ?').get(userId);
+    const assessmentRow = (await db.prepare('SELECT interests, subjects, strengths, work_style FROM career_assessments WHERE user_id = ?').get(userId));
     const assessment = assessmentRow ? {
       interests: JSON.parse(assessmentRow.interests), subjects: JSON.parse(assessmentRow.subjects),
       strengths: JSON.parse(assessmentRow.strengths), workStyle: JSON.parse(assessmentRow.work_style)
     } : { interests: [], subjects: [], strengths: [], workStyle: [] };
-    const previousJourney = buildPreviousJourney({ userId, roadmapId });
+    const previousJourney = (await buildPreviousJourney({ userId, roadmapId }));
     const generated = await (options.generateRoadmapWithLumia || generateRoadmapWithLumia)({
       career, assessment, level: nextLevel, previousJourney
     });
     const now = Date.now();
-    db.exec('BEGIN IMMEDIATE');
+    (await db.exec('BEGIN IMMEDIATE'));
     try {
       // Recheck database state after the provider call, including other server processes.
-      const latest = db.prepare('SELECT current_level FROM roadmaps WHERE id = ? AND user_id = ?').get(roadmapId, userId);
+      const latest = (await db.prepare('SELECT current_level FROM roadmaps WHERE id = ? AND user_id = ?' +
+        (db.dialect === 'mysql' ? ' FOR UPDATE' : '')).get(roadmapId, userId));
       if (!latest || latest.current_level !== currentLevel ||
-          !getRoadmapLevelProgress({ userId, roadmapId, level: currentLevel }).complete) {
-        db.exec('COMMIT');
+          !(await getRoadmapLevelProgress({ userId, roadmapId, level: currentLevel })).complete) {
+        (await db.exec('COMMIT'));
         return { advanced: false, level: latest?.current_level || currentLevel };
       }
-      if (findNextLevel()) {
-        const result = activateExistingLevel();
-        db.exec('COMMIT');
+      if ((await findNextLevel())) {
+        const result = (await activateExistingLevel());
+        (await db.exec('COMMIT'));
         return result;
       }
-      const maxStep = db.prepare('SELECT COALESCE(MAX(step_number), 0) AS max_step FROM roadmap_steps WHERE roadmap_id = ?').get(roadmapId);
+      const maxStep = (await db.prepare('SELECT COALESCE(MAX(step_number), 0) AS max_step FROM roadmap_steps WHERE roadmap_id = ?').get(roadmapId));
       let nextStepNumber = Number(maxStep.max_step) + 1;
       const insertStep = db.prepare(`INSERT INTO roadmap_steps
         (roadmap_id, phase_number, phase_title, step_number, title, description,
          estimated_minutes, activity_type, evidence_required, level, level_step_number)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const step of generated.steps) {
-        insertStep.run(roadmapId, step.phase, step.phaseTitle, nextStepNumber++, step.title,
-          step.description, step.minutes, step.type, step.evidence ? 1 : 0, nextLevel, step.levelStepNumber);
+        (await insertStep.run(roadmapId, step.phase, step.phaseTitle, nextStepNumber++, step.title,
+          step.description, step.minutes, step.type, step.evidence ? 1 : 0, nextLevel, step.levelStepNumber));
       }
-      db.prepare(`UPDATE roadmaps SET current_level = ?, status = 'active', updated_at = ?
-        WHERE id = ? AND user_id = ?`).run(nextLevel, now, roadmapId, userId);
-      db.prepare(`INSERT OR REPLACE INTO roadmap_level_notifications (roadmap_id, level, progression)
+      (await db.prepare(`UPDATE roadmaps SET current_level = ?, status = 'active', updated_at = ?
+        WHERE id = ? AND user_id = ?`).run(nextLevel, now, roadmapId, userId));
+      (await db.prepare(`INSERT OR REPLACE INTO roadmap_level_notifications (roadmap_id, level, progression)
         VALUES (?, ?, ?)`).run(roadmapId, nextLevel, JSON.stringify({
           advanced: true, generated: true, previousLevel: currentLevel, level: nextLevel,
           stepsCreated: generated.steps.length, overview: generated.overview
-        }));
-      db.exec('COMMIT');
+        })));
+      (await db.exec('COMMIT'));
     } catch (error) {
-      db.exec('ROLLBACK');
+      (await db.exec('ROLLBACK'));
       throw error;
     }
     return {
@@ -1320,7 +1364,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   /* =========================================
      SAVE VERIFIED SKILLS
   ========================================= */
-  function saveVerifiedSkills({ userId, evidenceSubmissionId, roadmapStepId, skills, verifiedAt = Date.now() }) {
+  async function saveVerifiedSkills({ userId, evidenceSubmissionId, roadmapStepId, skills, verifiedAt = Date.now() }) {
     if (!Array.isArray(skills)) return [];
     const cleanSkills = [];
     const seen = new Set();
@@ -1336,29 +1380,29 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     }
     const savedSkills = [];
     for (const skill of cleanSkills) {
-      let userSkill = db.prepare(`SELECT id FROM user_skills
-        WHERE user_id = ? AND normalized_name = ?`).get(userId, skill.normalizedName);
+      let userSkill = (await db.prepare(`SELECT id FROM user_skills
+        WHERE user_id = ? AND normalized_name = ?`).get(userId, skill.normalizedName));
       if (!userSkill) {
-        const result = db.prepare(`INSERT INTO user_skills
+        const result = (await db.prepare(`INSERT INTO user_skills
           (user_id, skill_name, normalized_name, verified_count, first_verified_at, last_verified_at)
-          VALUES (?, ?, ?, 0, ?, ?)`).run(userId, skill.skillName, skill.normalizedName, verifiedAt, verifiedAt);
+          VALUES (?, ?, ?, 0, ?, ?)`).run(userId, skill.skillName, skill.normalizedName, verifiedAt, verifiedAt));
         userSkill = { id: Number(result.lastInsertRowid) };
       }
-      const verification = db.prepare(`INSERT OR IGNORE INTO skill_verifications
+      const verification = (await db.prepare(`INSERT OR IGNORE INTO skill_verifications
         (user_id, user_skill_id, evidence_submission_id, roadmap_step_id, created_at)
-        VALUES (?, ?, ?, ?, ?)`).run(userId, userSkill.id, evidenceSubmissionId, roadmapStepId, verifiedAt);
+        VALUES (?, ?, ?, ?, ?)`).run(userId, userSkill.id, evidenceSubmissionId, roadmapStepId, verifiedAt));
       if (Number(verification.changes) > 0) {
-        db.prepare(`UPDATE user_skills SET skill_name = ?, verified_count = verified_count + 1,
-          last_verified_at = ? WHERE id = ?`).run(skill.skillName, verifiedAt, userSkill.id);
+        (await db.prepare(`UPDATE user_skills SET skill_name = ?, verified_count = verified_count + 1,
+          last_verified_at = ? WHERE id = ?`).run(skill.skillName, verifiedAt, userSkill.id));
       }
-      const updatedSkill = db.prepare('SELECT id, skill_name, verified_count FROM user_skills WHERE id = ?').get(userSkill.id);
+      const updatedSkill = (await db.prepare('SELECT id, skill_name, verified_count FROM user_skills WHERE id = ?').get(userSkill.id));
       savedSkills.push({ id: updatedSkill.id, name: updatedSkill.skill_name, verifiedCount: updatedSkill.verified_count });
     }
     return savedSkills;
   }
 
-  const requireUser = (req, res) => {
-    const user = currentUser(req);
+  const requireUser = async (req, res) => {
+    const user = (await currentUser(req));
     if (!user) res.status(401).json({ error: 'Sign in to save your profile.' });
     return user;
   };
@@ -1366,23 +1410,23 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
      DEVELOPMENT-ONLY LUMIA CONTEXT PREVIEW
   ========================================= */
   if (!production) {
-    app.get('/api/dev/lumia/context', (req, res) => {
-      const user = requireUser(req, res);
+    app.get('/api/dev/lumia/context', async (req, res) => {
+      const user = (await requireUser(req, res));
       if (!user) return;
-      res.json(buildLumiaUserContext({ userId: user.id }));
+      res.json((await buildLumiaUserContext({ userId: user.id })));
     });
   }
 
-  app.get('/api/lumia/history', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/lumia/history', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
-    let conversation = getLatestLumiaConversation(user.id);
-    if (!conversation) conversation = createLumiaConversation(user.id);
-    const context = buildLumiaUserContext({ userId: user.id });
+    let conversation = (await getLatestLumiaConversation(user.id));
+    if (!conversation) conversation = (await createLumiaConversation(user.id));
+    const context = (await buildLumiaUserContext({ userId: user.id }));
     res.json({
       success: true,
       conversation,
-      messages: getLumiaConversationMessages({ userId: user.id, conversationId: conversation.id, limit: 30 }),
+      messages: (await getLumiaConversationMessages({ userId: user.id, conversationId: conversation.id, limit: 30 })),
       context: {
         career: context.career,
         currentLevel: context.roadmap?.currentLevel || null,
@@ -1393,17 +1437,17 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     });
   });
 
-  app.post('/api/lumia/new-conversation', (req, res) => {
-    const user = requireUser(req, res);
+  app.post('/api/lumia/new-conversation', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
-    res.status(201).json({ success: true, conversation: createLumiaConversation(user.id) });
+    res.status(201).json({ success: true, conversation: (await createLumiaConversation(user.id)) });
   });
 
   /* =========================================
      LUMIA CAREER COMPANION
   ========================================= */
   app.post('/api/lumia/chat', async (req, res) => {
-    const user = requireUser(req, res);
+    const user = (await requireUser(req, res));
     if (!user) return;
 
     const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
@@ -1412,24 +1456,24 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       return res.status(400).json({ error: 'Your message is too long. Please shorten it and try again.' });
     }
 
-    let conversation = getLumiaConversation({
+    let conversation = (await getLumiaConversation({
       userId: user.id,
       conversationId: Number(req.body?.conversationId)
-    });
-    if (!conversation) conversation = getLatestLumiaConversation(user.id);
-    if (!conversation) conversation = createLumiaConversation(user.id);
+    }));
+    if (!conversation) conversation = (await getLatestLumiaConversation(user.id));
+    if (!conversation) conversation = (await createLumiaConversation(user.id));
 
     let context;
     try {
-      context = buildLumiaUserContext({ userId: user.id });
+      context = (await buildLumiaUserContext({ userId: user.id }));
     } catch (error) {
       console.error('Lumia context build failed:', error.message);
       return res.status(500).json({ error: "Lumia couldn't load your CareerKraft progress right now." });
     }
-    const viewedPage = buildLumiaPageContext({
+    const viewedPage = (await buildLumiaPageContext({
       userId: user.id,
       pageContext: req.body?.pageContext
-    });
+    }));
     const levelProgress = context.roadmap?.currentLevelProgress;
     const remainingActivities = levelProgress ? Math.max(0, levelProgress.total - levelProgress.completed) : 0;
     const lumiaContext = {
@@ -1451,11 +1495,11 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
         completingCurrentActivityFinishesLevel: Boolean(context.currentActivity && remainingActivities === 1)
       };
     }
-    const historyMessages = getLumiaConversationMessages({
+    const historyMessages = (await getLumiaConversationMessages({
       userId: user.id,
       conversationId: conversation.id,
       limit: 14
-    }).map(item => ({
+    })).map(item => ({
       role: item.role,
       content: String(item.content || '').slice(0, 5000)
     }));
@@ -1550,24 +1594,24 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       }
 
       const now = Date.now();
-      db.exec('BEGIN IMMEDIATE');
+      (await db.exec('BEGIN IMMEDIATE'));
       let assistantMessageId;
       try {
-        db.prepare(`INSERT INTO lumia_messages
+        (await db.prepare(`INSERT INTO lumia_messages
           (conversation_id, user_id, role, content, created_at)
-          VALUES (?, ?, 'user', ?, ?)`).run(conversation.id, user.id, message, now);
-        const inserted = db.prepare(`INSERT INTO lumia_messages
+          VALUES (?, ?, 'user', ?, ?)`).run(conversation.id, user.id, message, now));
+        const inserted = (await db.prepare(`INSERT INTO lumia_messages
           (conversation_id, user_id, role, content, created_at)
-          VALUES (?, ?, 'assistant', ?, ?)`).run(conversation.id, user.id, answer, now + 1);
+          VALUES (?, ?, 'assistant', ?, ?)`).run(conversation.id, user.id, answer, now + 1));
         assistantMessageId = Number(inserted.lastInsertRowid);
         const title = conversation.title === 'New conversation'
           ? message.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Career conversation'
           : conversation.title;
-        db.prepare(`UPDATE lumia_conversations SET title = ?, updated_at = ?
-          WHERE id = ? AND user_id = ?`).run(title, now + 1, conversation.id, user.id);
-        db.exec('COMMIT');
+        (await db.prepare(`UPDATE lumia_conversations SET title = ?, updated_at = ?
+          WHERE id = ? AND user_id = ?`).run(title, now + 1, conversation.id, user.id));
+        (await db.exec('COMMIT'));
       } catch (error) {
-        db.exec('ROLLBACK');
+        (await db.exec('ROLLBACK'));
         throw error;
       }
 
@@ -1593,13 +1637,13 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      REQUIRE REVIEWER
   ========================================= */
-  const requireReviewer = (req, res) => {
-    const user = requireUser(req, res);
+  const requireReviewer = async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return null;
 
-    const reviewer = db.prepare(`
+    const reviewer = (await db.prepare(`
       SELECT user_id FROM reviewers WHERE user_id = ?
-    `).get(user.id);
+    `).get(user.id));
     if (!reviewer) {
       res.status(403).json({ error: 'Reviewer access required.' });
       return null;
@@ -1610,18 +1654,18 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      GET VERIFIED SKILLS
   ========================================= */
-  app.get('/api/skills', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/skills', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
-    const skills = db.prepare(`
+    const skills = (await db.prepare(`
       SELECT id, skill_name, normalized_name, verified_count,
         first_verified_at, last_verified_at
       FROM user_skills
       WHERE user_id = ?
       ORDER BY verified_count DESC, last_verified_at DESC
-    `).all(user.id);
+    `).all(user.id));
     const totalVerifications = skills.reduce((total, skill) => total + Number(skill.verified_count), 0);
-    const levelSkills = db.prepare(`
+    const levelSkills = (await db.prepare(`
       SELECT roadmap_steps.level, user_skills.id, user_skills.skill_name, COUNT(*) AS verified_count
       FROM skill_verifications
       JOIN user_skills ON user_skills.id = skill_verifications.user_skill_id
@@ -1629,7 +1673,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       WHERE skill_verifications.user_id = ? AND user_skills.user_id = ?
       GROUP BY roadmap_steps.level, user_skills.id
       ORDER BY verified_count DESC, user_skills.skill_name
-    `).all(user.id, user.id);
+    `).all(user.id, user.id));
     res.json({
       levels: ['beginner', 'intermediate', 'advanced'].map(level => ({
         id: level, title: level.charAt(0).toUpperCase() + level.slice(1),
@@ -1648,20 +1692,20 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      GET VERIFIED SKILL DETAILS
   ========================================= */
-  app.get('/api/skills/:id', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/skills/:id', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
     const skillId = Number(req.params.id);
     if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(skillId)) {
       return res.status(400).json({ error: 'Invalid skill.' });
     }
-    const skill = db.prepare(`SELECT id, skill_name, verified_count, first_verified_at, last_verified_at
-      FROM user_skills WHERE id = ? AND user_id = ?`).get(skillId, user.id);
+    const skill = (await db.prepare(`SELECT id, skill_name, verified_count, first_verified_at, last_verified_at
+      FROM user_skills WHERE id = ? AND user_id = ?`).get(skillId, user.id));
     if (!skill) return res.status(404).json({ error: 'Verified skill not found.' });
 
     // Every link must belong to this student. A verification alone is not proof
     // if its evidence was rejected, reassigned or linked to a different activity.
-    const history = db.prepare(`
+    const history = (await db.prepare(`
       SELECT skill_verifications.id, skill_verifications.created_at,
         roadmap_steps.id AS step_id, roadmap_steps.title AS step_title,
         roadmap_steps.level, roadmap_steps.level_step_number, roadmap_steps.activity_type,
@@ -1680,7 +1724,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         AND skill_verifications.user_id = ? AND evidence_submissions.user_id = ?
         AND roadmaps.user_id = ? AND evidence_submissions.status = 'approved'
       ORDER BY skill_verifications.created_at DESC, skill_verifications.id DESC
-    `).all(skillId, user.id, user.id, user.id, user.id);
+    `).all(skillId, user.id, user.id, user.id, user.id));
 
     const counts = { beginner: 0, intermediate: 0, advanced: 0 };
     const seenEvidence = new Set();
@@ -1716,10 +1760,10 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      GET REVIEW QUEUE
   ========================================= */
-  app.get('/api/reviewer/evidence', (req, res) => {
-    const user = requireReviewer(req, res);
+  app.get('/api/reviewer/evidence', async (req, res) => {
+    const user = (await requireReviewer(req, res));
     if (!user) return;
-    const submissions = db.prepare(`
+    const submissions = (await db.prepare(`
       SELECT evidence_submissions.id, evidence_submissions.roadmap_step_id,
         evidence_submissions.submission_type, evidence_submissions.text_content,
         evidence_submissions.link_url, evidence_submissions.file_name,
@@ -1736,7 +1780,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       JOIN users ON users.id = evidence_submissions.user_id
       WHERE evidence_submissions.status IN ('submitted', 'review_required')
       ORDER BY evidence_submissions.submitted_at ASC
-    `).all();
+    `).all());
     res.json({
       submissions: submissions.map(item => ({
         id: item.id,
@@ -1763,44 +1807,44 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      APPROVE EVIDENCE
   ========================================= */
-  app.post('/api/reviewer/evidence/:id/approve', (req, res) => {
-    const reviewer = requireReviewer(req, res);
+  app.post('/api/reviewer/evidence/:id/approve', async (req, res) => {
+    const reviewer = (await requireReviewer(req, res));
     if (!reviewer) return;
     const evidenceId = Number(req.params.id);
     if (!Number.isInteger(evidenceId) || evidenceId <= 0) {
       return res.status(400).json({ error: 'Invalid evidence submission.' });
     }
-    const evidence = db.prepare(`
+    const evidence = (await db.prepare(`
       SELECT evidence_submissions.id, evidence_submissions.user_id,
         evidence_submissions.roadmap_step_id, evidence_submissions.status,
         roadmap_steps.roadmap_id, roadmap_steps.title AS step_title
       FROM evidence_submissions
       JOIN roadmap_steps ON roadmap_steps.id = evidence_submissions.roadmap_step_id
       WHERE evidence_submissions.id = ?
-    `).get(evidenceId);
+    `).get(evidenceId));
     if (!evidence) return res.status(404).json({ error: 'Evidence submission not found.' });
     if (evidence.status !== 'submitted' && evidence.status !== 'review_required') {
       return res.status(409).json({ error: 'This evidence is not waiting for review.' });
     }
     const now = Date.now();
     try {
-      db.exec('BEGIN');
-      db.prepare(`
+      (await db.exec('BEGIN'));
+      (await db.prepare(`
         UPDATE evidence_submissions SET status = 'approved', feedback = NULL, reviewed_at = ?
         WHERE id = ?
-      `).run(now, evidenceId);
-      db.prepare(`
+      `).run(now, evidenceId));
+      (await db.prepare(`
         INSERT INTO roadmap_progress (user_id, roadmap_step_id, status, started_at, completed_at)
         VALUES (?, ?, 'completed', ?, ?)
         ON CONFLICT(user_id, roadmap_step_id) DO UPDATE SET
           status = 'completed',
           started_at = COALESCE(roadmap_progress.started_at, excluded.started_at),
           completed_at = excluded.completed_at
-      `).run(evidence.user_id, evidence.roadmap_step_id, now, now);
-      db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, evidence.roadmap_id);
-      db.exec('COMMIT');
+      `).run(evidence.user_id, evidence.roadmap_step_id, now, now));
+      (await db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, evidence.roadmap_id));
+      (await db.exec('COMMIT'));
     } catch (error) {
-      db.exec('ROLLBACK');
+      (await db.exec('ROLLBACK'));
       console.error('Evidence approval failed:', error);
       return res.status(500).json({ error: 'We could not approve this evidence.' });
     }
@@ -1813,8 +1857,8 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      REQUEST EVIDENCE CHANGES
   ========================================= */
-  app.post('/api/reviewer/evidence/:id/request-changes', (req, res) => {
-    const reviewer = requireReviewer(req, res);
+  app.post('/api/reviewer/evidence/:id/request-changes', async (req, res) => {
+    const reviewer = (await requireReviewer(req, res));
     if (!reviewer) return;
     const evidenceId = Number(req.params.id);
     if (!Number.isInteger(evidenceId) || evidenceId <= 0) {
@@ -1827,40 +1871,40 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     if (feedback.length > 2000) {
       return res.status(400).json({ error: 'Feedback must be 2,000 characters or fewer.' });
     }
-    const evidence = db.prepare(`
+    const evidence = (await db.prepare(`
       SELECT id, user_id, roadmap_step_id, status FROM evidence_submissions WHERE id = ?
-    `).get(evidenceId);
+    `).get(evidenceId));
     if (!evidence) return res.status(404).json({ error: 'Evidence submission not found.' });
     if (evidence.status !== 'submitted' && evidence.status !== 'review_required') {
       return res.status(409).json({ error: 'This evidence is not waiting for review.' });
     }
     const now = Date.now();
-    db.prepare(`
+    (await db.prepare(`
       UPDATE evidence_submissions SET status = 'needs_changes', feedback = ?, reviewed_at = ?
       WHERE id = ?
-    `).run(feedback, now, evidenceId);
+    `).run(feedback, now, evidenceId));
     res.json({ success: true, evidence: {
       id: evidenceId, stepId: evidence.roadmap_step_id,
       status: 'needs_changes', feedback, reviewedAt: now
     } });
   });
 
-  app.get('/api/profile', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/profile', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
-    res.json({ profile: db.prepare('SELECT display_name, selected_career, onboarding_completed FROM profiles WHERE user_id=?').get(user.id) || null });
+    res.json({ profile: (await db.prepare('SELECT display_name, selected_career, onboarding_completed FROM profiles WHERE user_id=?').get(user.id)) || null });
   });
-  app.get('/api/assessment', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/assessment', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
-    const assessment = db.prepare(`SELECT interests, subjects, strengths, work_style, matches
-      FROM career_assessments WHERE user_id=?`).get(user.id);
+    const assessment = (await db.prepare(`SELECT interests, subjects, strengths, work_style, matches
+      FROM career_assessments WHERE user_id=?`).get(user.id));
     const careerDescriptions = new Map(assessment
       ? JSON.parse(assessment.matches).map(match => [match.id, match.description])
       : []);
     const careerCatalogById = new Map(careerCatalog.map(career => [career.id, career]));
-    const matches = db.prepare(`SELECT career_id AS id, title, category, score, reasons
-      FROM career_matches WHERE user_id=? ORDER BY rank`).all(user.id).map(match => {
+    const matches = (await db.prepare(`SELECT career_id AS id, title, category, score, reasons
+      FROM career_matches WHERE user_id=? ORDER BY rank`).all(user.id)).map(match => {
       const description = careerDescriptions.get(match.id);
       return {
         ...match,
@@ -1869,8 +1913,8 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         ...(typeof description === 'string' ? { description } : {})
       };
     });
-    const selectedCareer = db.prepare(`SELECT career_id AS id, title
-      FROM selected_career WHERE user_id=?`).get(user.id) || null;
+    const selectedCareer = (await db.prepare(`SELECT career_id AS id, title
+      FROM selected_career WHERE user_id=?`).get(user.id)) || null;
     res.json({
       assessment: assessment ? {
         interests: JSON.parse(assessment.interests),
@@ -1882,18 +1926,18 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       selectedCareer
     });
   });
-  app.post('/api/profile', (req, res) => {
-    const user = requireUser(req, res);
+  app.post('/api/profile', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
     const displayName = req.body.display_name;
     if (typeof displayName !== 'string' || displayName.length > 100) return res.status(400).json({ error: 'Profile name must be 100 characters or fewer.' });
-    db.prepare(`INSERT INTO profiles(user_id,display_name,updated_at) VALUES (?,?,?)
-      ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name, updated_at=excluded.updated_at`).run(user.id, displayName.trim(), Date.now());
+    (await db.prepare(`INSERT INTO profiles(user_id,display_name,updated_at) VALUES (?,?,?)
+      ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name, updated_at=excluded.updated_at`).run(user.id, displayName.trim(), Date.now()));
     res.json({ success: true });
   });
-  app.post('/api/profile/career', (req, res) => {
+  app.post('/api/profile/career', async (req, res) => {
 
-  const user = requireUser(req, res);
+  const user = (await requireUser(req, res));
 
   if (!user) return;
 
@@ -1914,7 +1958,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   }
 
   const match =
-    db.prepare(`
+    (await db.prepare(`
       SELECT
         career_id,
         title
@@ -1924,7 +1968,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     `).get(
       user.id,
       careerId
-    );
+    ));
 
 
   if (!match) {
@@ -1941,12 +1985,12 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     Date.now();
 
 
-  db.exec('BEGIN IMMEDIATE');
+  (await db.exec('BEGIN IMMEDIATE'));
 
 
   try {
 
-    db.prepare(`
+    (await db.prepare(`
       INSERT INTO profiles(
         user_id,
         display_name,
@@ -1967,10 +2011,10 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       user.name,
       match.title,
       now
-    );
+    ));
 
 
-    db.prepare(`
+    (await db.prepare(`
       INSERT INTO selected_career(
         user_id,
         career_id,
@@ -1990,16 +2034,16 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       match.career_id,
       match.title,
       now
-    );
+    ));
 
 
-    db.exec('COMMIT');
+    (await db.exec('COMMIT'));
 
   }
 
   catch (error) {
 
-    db.exec('ROLLBACK');
+    (await db.exec('ROLLBACK'));
 
     throw error;
 
@@ -2016,7 +2060,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
 
 });
   app.post('/api/assessments', async (req, res) => {
-    const user = requireUser(req, res);
+    const user = (await requireUser(req, res));
     if (!user) return;
     const { interests, subjects, strengths, work_style: workStyle, matches: fallbackMatches } = req.body || {};
     const validList = value => Array.isArray(value) && value.length <= 20 && value.every(item => typeof item === 'string' && item.length <= 100);
@@ -2047,21 +2091,23 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       source = 'fallback';
       matches = fallbackMatches.slice(0, 3);
     }
-    db.exec('BEGIN IMMEDIATE');
+    (await db.exec('BEGIN IMMEDIATE'));
     try {
-      db.prepare(`INSERT INTO career_assessments(user_id,interests,subjects,strengths,work_style,matches,updated_at)
+      (await db.prepare(`INSERT INTO career_assessments(user_id,interests,subjects,strengths,work_style,matches,updated_at)
         VALUES (?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET interests=excluded.interests,
         subjects=excluded.subjects, strengths=excluded.strengths, work_style=excluded.work_style,
         matches=excluded.matches, updated_at=excluded.updated_at`).run(user.id, JSON.stringify(interests),
-        JSON.stringify(subjects), JSON.stringify(strengths), JSON.stringify(workStyle), JSON.stringify(matches), Date.now());
-      db.prepare('DELETE FROM career_matches WHERE user_id=?').run(user.id);
+        JSON.stringify(subjects), JSON.stringify(strengths), JSON.stringify(workStyle), JSON.stringify(matches), Date.now()));
+      (await db.prepare('DELETE FROM career_matches WHERE user_id=?').run(user.id));
       const insertMatch = db.prepare(`INSERT INTO career_matches(user_id,rank,career_id,title,category,score,reasons)
         VALUES (?,?,?,?,?,?,?)`);
-      matches.forEach((match, index) => insertMatch.run(user.id, index + 1, match.id, match.title,
-        match.category, match.score, JSON.stringify(match.reasons || [])));
-      db.exec('COMMIT');
+      for (const [index, match] of matches.entries()) {
+        await insertMatch.run(user.id, index + 1, match.id, match.title,
+          match.category, match.score, JSON.stringify(match.reasons || []));
+      }
+      (await db.exec('COMMIT'));
     } catch (error) {
-      db.exec('ROLLBACK');
+      (await db.exec('ROLLBACK'));
       throw error;
     }
     res.json({ success: true, source, summary, matches });
@@ -2069,7 +2115,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   app.post('/api/roadmap', async (req, res) => {
 
   const user =
-    requireUser(req, res);
+    (await requireUser(req, res));
 
 
   if (!user) return;
@@ -2082,13 +2128,13 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   */
 
   const selected =
-    db.prepare(`
+    (await db.prepare(`
       SELECT
         career_id,
         title
       FROM selected_career
       WHERE user_id = ?
-    `).get(user.id);
+    `).get(user.id));
 
 
   if (!selected) {
@@ -2109,7 +2155,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   */
 
   const existing =
-    db.prepare(`
+    (await db.prepare(`
       SELECT id
       FROM roadmaps
       WHERE user_id = ?
@@ -2117,7 +2163,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     `).get(
       user.id,
       selected.career_id
-    );
+    ));
 
 
   if (existing) {
@@ -2151,13 +2197,13 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     Date.now();
 
 
-  db.exec('BEGIN IMMEDIATE');
+  (await db.exec('BEGIN IMMEDIATE'));
 
 
   try {
 
     const result =
-      db.prepare(`
+      (await db.prepare(`
         INSERT INTO roadmaps(
           user_id,
           career_id,
@@ -2174,7 +2220,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         selected.title,
         now,
         now
-      );
+      ));
 
 
     const roadmapId =
@@ -2201,10 +2247,9 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       `);
 
 
-    template.forEach(
-      (step, index) => {
+    for (const [index, step] of template.entries()) {
 
-        insertStep.run(
+        (await insertStep.run(
 
           roadmapId,
 
@@ -2226,10 +2271,9 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
           'beginner',
           index + 1
 
-        );
+        ));
 
-      }
-    );
+      };
 
 
     /*
@@ -2237,12 +2281,12 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     */
 
     const steps =
-      db.prepare(`
+      (await db.prepare(`
         SELECT id
         FROM roadmap_steps
         WHERE roadmap_id = ?
         ORDER BY step_number
-      `).all(roadmapId);
+      `).all(roadmapId));
 
 
     const insertProgress =
@@ -2257,19 +2301,17 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       `);
 
 
-    steps.forEach(
-      step => {
+    for (const step of steps) {
 
-        insertProgress.run(
+        (await insertProgress.run(
           user.id,
           step.id
-        );
+        ));
 
-      }
-    );
+      };
 
 
-    db.exec('COMMIT');
+    (await db.exec('COMMIT'));
 
 
     res.status(201).json({
@@ -2293,21 +2335,21 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
 
   catch (error) {
 
-    db.exec('ROLLBACK');
+    (await db.exec('ROLLBACK'));
 
     throw error;
 
   }
   });
 
-  app.post('/api/roadmap/steps/:id/start', (req, res) => {
-    const user = requireUser(req, res);
+  app.post('/api/roadmap/steps/:id/start', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
     const stepId = Number(req.params.id);
     if (!Number.isInteger(stepId) || stepId <= 0) {
       return res.status(400).json({ error: 'Invalid roadmap step.' });
     }
-    const step = db.prepare(`
+    const step = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.roadmap_id, roadmap_progress.status
       FROM roadmap_steps
       JOIN roadmaps ON roadmaps.id = roadmap_steps.roadmap_id
@@ -2315,20 +2357,20 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         ON roadmap_progress.roadmap_step_id = roadmap_steps.id
         AND roadmap_progress.user_id = ?
       WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?
-    `).get(user.id, stepId, user.id);
+    `).get(user.id, stepId, user.id));
     if (!step) return res.status(404).json({ error: 'Roadmap step not found.' });
     if (step.status === 'completed') {
       return res.json({ success: true, status: 'completed' });
     }
     const now = Date.now();
-    db.prepare(`
+    (await db.prepare(`
       INSERT INTO roadmap_progress (user_id, roadmap_step_id, status, started_at)
       VALUES (?, ?, 'in_progress', ?)
       ON CONFLICT(user_id, roadmap_step_id) DO UPDATE SET
         status = 'in_progress',
         started_at = COALESCE(roadmap_progress.started_at, excluded.started_at)
-    `).run(user.id, stepId, now);
-    db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, step.roadmap_id);
+    `).run(user.id, stepId, now));
+    (await db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, step.roadmap_id));
     res.json({ success: true, stepId, status: 'in_progress' });
   });
 
@@ -2336,14 +2378,14 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
      COMPLETE ROADMAP STEP
   ========================================= */
   app.post('/api/roadmap/steps/:id/complete', async (req, res) => {
-    const user = requireUser(req, res);
+    const user = (await requireUser(req, res));
     if (!user) return;
     const stepId = Number(req.params.id);
     if (!Number.isInteger(stepId) || stepId <= 0) {
       return res.status(400).json({ error: 'Invalid roadmap step.' });
     }
 
-    const step = db.prepare(`
+    const step = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.roadmap_id,
         roadmap_steps.evidence_required,
         COALESCE(roadmap_progress.status, 'not_started') AS status
@@ -2353,7 +2395,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         ON roadmap_progress.roadmap_step_id = roadmap_steps.id
         AND roadmap_progress.user_id = ?
       WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?
-    `).get(user.id, stepId, user.id);
+    `).get(user.id, stepId, user.id));
     if (!step) return res.status(404).json({ error: 'Roadmap step not found.' });
     if (step.status === 'completed') {
       return res.json({ success: true, stepId, status: 'completed' });
@@ -2371,16 +2413,16 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     }
 
     const now = Date.now();
-    db.exec('BEGIN IMMEDIATE');
+    (await db.exec('BEGIN IMMEDIATE'));
     try {
-    db.prepare(`
+    (await db.prepare(`
       UPDATE roadmap_progress SET status = 'completed', completed_at = ?
       WHERE user_id = ? AND roadmap_step_id = ?
-    `).run(now, user.id, stepId);
-    db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, step.roadmap_id);
-    db.exec('COMMIT');
+    `).run(now, user.id, stepId));
+    (await db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, step.roadmap_id));
+    (await db.exec('COMMIT'));
     } catch (error) {
-      db.exec('ROLLBACK');
+      (await db.exec('ROLLBACK'));
       throw error;
     }
     const levelProgression = await tryAdvanceRoadmapLevel({ userId: user.id, roadmapId: step.roadmap_id });
@@ -2390,8 +2432,8 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      ON-DEMAND MODULE CONTENT
   ========================================= */
-  function readModuleContent(step) {
-    const row = db.prepare('SELECT * FROM roadmap_step_content WHERE roadmap_step_id = ?').get(step.id);
+  async function readModuleContent(step) {
+    const row = (await db.prepare('SELECT * FROM roadmap_step_content WHERE roadmap_step_id = ?').get(step.id));
     if (!row) return null;
     let resources = [];
     try { resources = validateLearningResources(JSON.parse(row.resources || '[]')); } catch { /* Resources are optional. */ }
@@ -2434,7 +2476,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       // Preserve original candidates on a temporary network failure. Repair only
       // the resources column; the generated lesson and progress never change.
       if (resources.length) {
-        db.prepare('UPDATE roadmap_step_content SET resources = ? WHERE roadmap_step_id = ?').run(JSON.stringify(resources), step.id);
+        (await db.prepare('UPDATE roadmap_step_content SET resources = ? WHERE roadmap_step_id = ?').run(JSON.stringify(resources), step.id));
       }
       return resources;
     })();
@@ -2442,44 +2484,44 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     try { return await repair; } finally { pendingResourceRepairs.delete(step.id); }
   }
   async function ensureModuleContent(userId, step) {
-    const saved = readModuleContent(step);
+    const saved = (await readModuleContent(step));
     if (saved) return saved;
     if (pendingModuleContent.has(step.id)) return pendingModuleContent.get(step.id);
     const generate = (async () => {
-      const row = db.prepare('SELECT interests, subjects, strengths, work_style FROM career_assessments WHERE user_id = ?').get(userId);
+      const row = (await db.prepare('SELECT interests, subjects, strengths, work_style FROM career_assessments WHERE user_id = ?').get(userId));
       const array = value => { try { const result = JSON.parse(value || '[]'); return Array.isArray(result) ? result : []; } catch { return []; } };
       const assessment = { interests: array(row?.interests), subjects: array(row?.subjects), strengths: array(row?.strengths), workStyle: array(row?.work_style) };
       const career = careerCatalog.find(item => item.id === step.career_id) || {
         id: step.career_id, title: step.career_title, category: 'Career'
       };
       const content = validateModuleContent(await (options.generateModuleContentWithLumia || options.generateModuleContent || generateModuleContentWithLumia)({
-        career, step, assessment, previousJourney: buildPreviousJourney({ userId, roadmapId: step.roadmap_id })
+        career, step, assessment, previousJourney: (await buildPreviousJourney({ userId, roadmapId: step.roadmap_id }))
       }), step);
       // Another process may have generated this step: retain the first saved version.
-      db.prepare(`INSERT OR IGNORE INTO roadmap_step_content
+      (await db.prepare(`INSERT OR IGNORE INTO roadmap_step_content
         (roadmap_step_id, introduction, learning_objectives, key_concepts, example_content, task_content,
          evidence_instructions, verification_criteria, target_skills, reflection_question, generated_at, resources)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(step.id, content.introduction,
           JSON.stringify(content.learningObjectives), JSON.stringify(content.keyConcepts),
           JSON.stringify(content.example), JSON.stringify(content.task), content.evidence.instructions,
           JSON.stringify(content.verificationCriteria), JSON.stringify(content.skills), content.reflectionQuestion, Date.now(),
-          JSON.stringify(content.resources || []));
-      return readModuleContent(step);
+          JSON.stringify(content.resources || [])));
+      return (await readModuleContent(step));
     })();
     pendingModuleContent.set(step.id, generate);
     try { return await generate; } finally { pendingModuleContent.delete(step.id); }
   }
   app.post('/api/roadmap/steps/:id/content', async (req, res) => {
-    const user = requireUser(req, res);
+    const user = (await requireUser(req, res));
     if (!user) return;
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid roadmap step.' });
-    const step = db.prepare(`SELECT roadmap_steps.*, roadmaps.career_id, roadmaps.career_title
+    const step = (await db.prepare(`SELECT roadmap_steps.*, roadmaps.career_id, roadmaps.career_title
       FROM roadmap_steps JOIN roadmaps ON roadmaps.id = roadmap_steps.roadmap_id
-      WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?`).get(id, user.id);
+      WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?`).get(id, user.id));
     if (!step) return res.status(404).json({ error: 'Roadmap step not found.' });
     try {
-      const cached = Boolean(readModuleContent(step)) || pendingModuleContent.has(step.id);
+      const cached = Boolean((await readModuleContent(step))) || pendingModuleContent.has(step.id);
       const content = await ensureModuleContent(user.id, step);
       const resources = await repairModuleResources(step, content);
       res.status(cached ? 200 : 201).json({ generated: !cached, cached, content: { ...content, resources } });
@@ -2493,14 +2535,14 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      GET SINGLE ROADMAP STEP
   ========================================= */
-  app.get('/api/roadmap/steps/:id', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/roadmap/steps/:id', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
     const stepId = Number(req.params.id);
     if (!Number.isInteger(stepId) || stepId <= 0) {
       return res.status(400).json({ error: 'Invalid roadmap step.' });
     }
-    const step = db.prepare(`
+    const step = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.step_number,
         roadmap_steps.phase_number, roadmap_steps.phase_title,
         roadmap_steps.title, roadmap_steps.description,
@@ -2516,7 +2558,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         ON roadmap_progress.roadmap_step_id = roadmap_steps.id
         AND roadmap_progress.user_id = ?
       WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?
-    `).get(user.id, stepId, user.id);
+    `).get(user.id, stepId, user.id));
     if (!step) return res.status(404).json({ error: 'Roadmap step not found.' });
     res.json({
       step: {
@@ -2543,25 +2585,25 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
      SUBMIT ROADMAP EVIDENCE
   ========================================= */
   app.post('/api/roadmap/steps/:id/evidence', async (req, res) => {
-    const user = requireUser(req, res);
+    const user = (await requireUser(req, res));
     if (!user) return;
     const stepId = Number(req.params.id);
     if (!Number.isInteger(stepId) || stepId <= 0) {
       return res.status(400).json({ error: 'Invalid roadmap step.' });
     }
-    const step = db.prepare(`
+    const step = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.roadmap_id,
         roadmap_steps.title, roadmap_steps.description, roadmap_steps.evidence_required,
         roadmaps.career_title
       FROM roadmap_steps
       JOIN roadmaps ON roadmaps.id = roadmap_steps.roadmap_id
       WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?
-    `).get(stepId, user.id);
+    `).get(stepId, user.id));
     if (!step) return res.status(404).json({ error: 'Roadmap step not found.' });
     if (!step.evidence_required) {
       return res.status(400).json({ error: 'This roadmap step does not require evidence.' });
     }
-    let existingEvidence = db.prepare('SELECT status, file_storage_key FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId);
+    let existingEvidence = (await db.prepare('SELECT status, file_storage_key FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId));
     if (existingEvidence?.status === 'approved') {
       return res.status(409).json({ error: 'This evidence has already been approved.' });
     }
@@ -2598,7 +2640,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
     }
     // File inspection may take time; never replace an approval made in the meantime.
-    existingEvidence = db.prepare('SELECT status, file_storage_key FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId);
+    existingEvidence = (await db.prepare('SELECT status, file_storage_key FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId));
     if (existingEvidence?.status === 'approved') {
       return res.status(409).json({ error: 'This evidence has already been approved.' });
     }
@@ -2610,8 +2652,8 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         mkdirSync(evidenceUploadDir, { recursive: true });
         writeFileSync(path.join(evidenceUploadDir, storageKey), uploadedFile.buffer, { flag: 'wx', mode: 0o600 });
       }
-      db.exec('BEGIN');
-      db.prepare(`
+      (await db.exec('BEGIN'));
+      (await db.prepare(`
       INSERT INTO evidence_submissions (
         user_id, roadmap_step_id, submission_type, text_content, link_url, file_name, file_storage_key, file_mime_type, file_size,
         status, feedback, submitted_at, reviewed_at
@@ -2625,26 +2667,26 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
         status = 'submitted', feedback = NULL,
         submitted_at = excluded.submitted_at, reviewed_at = NULL
       `).run(user.id, stepId, submissionType, cleanText, uploadedFile?.fileName || null, storageKey,
-        uploadedFile?.mimeType || null, uploadedFile?.buffer.length || null, now);
-      db.prepare(`
+        uploadedFile?.mimeType || null, uploadedFile?.buffer.length || null, now));
+      (await db.prepare(`
       INSERT INTO roadmap_progress (user_id, roadmap_step_id, status, started_at)
       VALUES (?, ?, 'in_progress', ?)
       ON CONFLICT(user_id, roadmap_step_id) DO UPDATE SET
         status = CASE WHEN roadmap_progress.status = 'completed'
           THEN 'completed' ELSE 'in_progress' END,
         started_at = COALESCE(roadmap_progress.started_at, excluded.started_at)
-      `).run(user.id, stepId, now);
-      db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, step.roadmap_id);
-      db.exec('COMMIT');
+      `).run(user.id, stepId, now));
+      (await db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(now, step.roadmap_id));
+      (await db.exec('COMMIT'));
     } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
+      if (db.isTransaction) (await db.exec('ROLLBACK'));
       removeEvidenceFile(storageKey);
       console.error('Evidence submission could not be saved:', error.code || 'Storage error');
       return res.status(503).json({ error: 'We could not save your work. Please try again.' });
     }
     removeEvidenceFile(existingEvidence?.file_storage_key);
-    const moduleContent = db.prepare(`SELECT verification_criteria, target_skills, task_content
-      FROM roadmap_step_content WHERE roadmap_step_id = ?`).get(step.id);
+    const moduleContent = (await db.prepare(`SELECT verification_criteria, target_skills, task_content
+      FROM roadmap_step_content WHERE roadmap_step_id = ?`).get(step.id));
     const parseModuleJSON = (value, fallback) => {
       try { return JSON.parse(value || 'null') ?? fallback; } catch { return fallback; }
     };
@@ -2709,7 +2751,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       .map(skill => allowedSkills.get(skill.toLowerCase())))].slice(0, 8);
     const reviewedAt = Date.now();
     // A newer submission or human review must not be overwritten by a slow AI response.
-    const latest = db.prepare('SELECT id, status, submitted_at, text_content, file_storage_key FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId);
+    const latest = (await db.prepare('SELECT id, status, submitted_at, text_content, file_storage_key FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId));
     if (!latest || latest.status !== 'submitted' || latest.submitted_at !== now ||
         latest.text_content !== cleanText || latest.file_storage_key !== storageKey) {
       return res.status(409).json({ error: 'This evidence changed while it was being reviewed. Please reload the activity.' });
@@ -2718,27 +2760,27 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     let verifiedSkills = [];
     let levelProgression = null;
     try {
-      db.exec('BEGIN');
-      db.prepare(`UPDATE evidence_submissions SET status = ?, feedback = ?, reviewed_at = ?
-        WHERE user_id = ? AND roadmap_step_id = ?`).run(status, review.feedback, reviewedAt, user.id, stepId);
+      (await db.exec('BEGIN'));
+      (await db.prepare(`UPDATE evidence_submissions SET status = ?, feedback = ?, reviewed_at = ?
+        WHERE user_id = ? AND roadmap_step_id = ?`).run(status, review.feedback, reviewedAt, user.id, stepId));
       if (status === 'approved') {
-        db.prepare(`INSERT INTO roadmap_progress (user_id, roadmap_step_id, status, started_at, completed_at)
+        (await db.prepare(`INSERT INTO roadmap_progress (user_id, roadmap_step_id, status, started_at, completed_at)
           VALUES (?, ?, 'completed', ?, ?)
           ON CONFLICT(user_id, roadmap_step_id) DO UPDATE SET status = 'completed',
           started_at = COALESCE(roadmap_progress.started_at, excluded.started_at),
-          completed_at = excluded.completed_at`).run(user.id, stepId, now, reviewedAt);
+          completed_at = excluded.completed_at`).run(user.id, stepId, now, reviewedAt));
       }
-      db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(reviewedAt, step.roadmap_id);
+      (await db.prepare('UPDATE roadmaps SET updated_at = ? WHERE id = ?').run(reviewedAt, step.roadmap_id));
       if (status === 'approved') {
-        const approvedEvidence = db.prepare('SELECT id FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId);
-        verifiedSkills = saveVerifiedSkills({
+        const approvedEvidence = (await db.prepare('SELECT id FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?').get(user.id, stepId));
+        verifiedSkills = (await saveVerifiedSkills({
           userId: user.id, evidenceSubmissionId: approvedEvidence.id,
           roadmapStepId: stepId, skills: review.skillsDetected, verifiedAt: reviewedAt
-        });
+        }));
       }
-      db.exec('COMMIT');
+      (await db.exec('COMMIT'));
     } catch (error) {
-      db.exec('ROLLBACK');
+      (await db.exec('ROLLBACK'));
       console.error('AI review transaction failed:', error.message);
       return res.status(500).json({ error: 'Evidence was reviewed but CareerKraft could not update your progress.' });
     }
@@ -2763,17 +2805,17 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   /* =========================================
      GET ROADMAP EVIDENCE
   ========================================= */
-  app.get('/api/evidence/:id/file', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/evidence/:id/file', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
     const evidenceId = Number(req.params.id);
     if (!Number.isInteger(evidenceId) || evidenceId <= 0) {
       return res.status(400).json({ error: 'Invalid evidence submission.' });
     }
-    const reviewer = db.prepare('SELECT user_id FROM reviewers WHERE user_id = ?').get(user.id);
-    const evidence = db.prepare(`SELECT file_name, file_storage_key, file_mime_type
+    const reviewer = (await db.prepare('SELECT user_id FROM reviewers WHERE user_id = ?').get(user.id));
+    const evidence = (await db.prepare(`SELECT file_name, file_storage_key, file_mime_type
       FROM evidence_submissions WHERE id = ? AND (user_id = ? OR ? = 1)`)
-      .get(evidenceId, user.id, reviewer ? 1 : 0);
+      .get(evidenceId, user.id, reviewer ? 1 : 0));
     if (!evidence || !/^[a-f0-9]{64}$/.test(evidence.file_storage_key || '')) {
       return res.status(404).json({ error: 'Uploaded work not found.' });
     }
@@ -2785,26 +2827,26 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     });
   });
 
-  app.get('/api/roadmap/steps/:id/evidence', (req, res) => {
-    const user = requireUser(req, res);
+  app.get('/api/roadmap/steps/:id/evidence', async (req, res) => {
+    const user = (await requireUser(req, res));
     if (!user) return;
     const stepId = Number(req.params.id);
     if (!Number.isInteger(stepId) || stepId <= 0) {
       return res.status(400).json({ error: 'Invalid roadmap step.' });
     }
-    const step = db.prepare(`
+    const step = (await db.prepare(`
       SELECT roadmap_steps.id, roadmap_steps.evidence_required
       FROM roadmap_steps
       JOIN roadmaps ON roadmaps.id = roadmap_steps.roadmap_id
       WHERE roadmap_steps.id = ? AND roadmaps.user_id = ?
-    `).get(stepId, user.id);
+    `).get(stepId, user.id));
     if (!step) return res.status(404).json({ error: 'Roadmap step not found.' });
     if (!step.evidence_required) return res.json({ evidence: null });
-    const evidence = db.prepare(`
+    const evidence = (await db.prepare(`
       SELECT id, submission_type, text_content, link_url, file_name,
         status, feedback, submitted_at, reviewed_at
       FROM evidence_submissions WHERE user_id = ? AND roadmap_step_id = ?
-    `).get(user.id, stepId);
+    `).get(user.id, stepId));
     if (!evidence) return res.json({ evidence: null });
     res.json({
       evidence: {
@@ -2822,21 +2864,21 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     });
   });
 
-  app.get('/api/roadmap', (req, res) => {
+  app.get('/api/roadmap', async (req, res) => {
 
   const user =
-    requireUser(req, res);
+    (await requireUser(req, res));
 
   if (!user) return;
 
   const selected =
-    db.prepare(`
+    (await db.prepare(`
       SELECT
         career_id,
         title
       FROM selected_career
       WHERE user_id = ?
-    `).get(user.id);
+    `).get(user.id));
 
   if (!selected) {
 
@@ -2848,7 +2890,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   }
 
   const roadmap =
-    db.prepare(`
+    (await db.prepare(`
       SELECT
         id,
         career_id,
@@ -2863,7 +2905,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
     `).get(
       user.id,
       selected.career_id
-    );
+    ));
 
   if (!roadmap) {
 
@@ -2879,7 +2921,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
 
   const currentLevel = roadmap.current_level || "beginner";
   const steps =
-    db.prepare(`
+    (await db.prepare(`
       SELECT
         roadmap_steps.id,
         roadmap_steps.phase_number,
@@ -2909,7 +2951,7 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
       user.id,
       roadmap.id,
       currentLevel
-    );
+    ));
 
   const completedSteps =
     steps.filter(
@@ -2956,8 +2998,8 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
 
   const nextStep = steps.find(step => step.status !== 'completed');
 
-  const journey = buildRoadmapJourney({ userId: user.id, roadmap });
-  const notification = db.prepare('SELECT progression FROM roadmap_level_notifications WHERE roadmap_id = ? AND level = ?').get(roadmap.id, currentLevel);
+  const journey = (await buildRoadmapJourney({ userId: user.id, roadmap }));
+  const notification = (await db.prepare('SELECT progression FROM roadmap_level_notifications WHERE roadmap_id = ? AND level = ?').get(roadmap.id, currentLevel));
   res.json({
     pendingLevelProgression: notification ? JSON.parse(notification.progression) : null,
     journey,
@@ -2990,30 +3032,30 @@ Never reveal or repeat passwords, session tokens, authentication data, private e
   });
 });
 
-app.post('/api/early-access', (req, res) => {
+app.post('/api/early-access', async (req, res) => {
     const email = normalizeEmail(req.body.email);
     if (!validEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
-    const result = db.prepare('INSERT OR IGNORE INTO early_access(email,created_at) VALUES (?,?)').run(email, Date.now());
+    const result = (await db.prepare('INSERT OR IGNORE INTO early_access(email,created_at) VALUES (?,?)').run(email, Date.now()));
     if (!result.changes) return res.status(409).json({ error: "You're already on the list.", code: 'duplicate_email' });
     res.status(201).json({ success: true });
   });
-  app.post('/api/verify', authSecurity.tokenLimit, (req, res) => {
-    const id = consume(req.body.token, 'verify', id => db.prepare('UPDATE users SET verified=1 WHERE id=?').run(id));
+  app.post('/api/verify', authSecurity.tokenLimit, async (req, res) => {
+    const id = (await consume(req.body.token, 'verify', async id => (await db.prepare('UPDATE users SET verified=1 WHERE id=?').run(id))));
     if (!id) return res.status(400).json({ error: 'This verification link is invalid or has expired.' });
-    const user = db.prepare('SELECT * FROM users WHERE id=?').get(id);
-    rotateSession(res, req, user); res.json({ user: safeUser(user) });
+    const user = (await db.prepare('SELECT * FROM users WHERE id=?').get(id));
+    (await rotateSession(res, req, user)); res.json({ user: (await safeUser(user)) });
   });
   app.post('/api/resend', emailLimit, async (req, res) => {
     const email = normalizeEmail(req.body.email);
     if (!validEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
-    const user = db.prepare('SELECT * FROM users WHERE email=?').get(email);
+    const user = (await db.prepare('SELECT * FROM users WHERE email=?').get(email));
     if (user && !user.verified) queueEmail(user, 'verify');
     res.json({ success: true, message: emailMessage });
   });
   app.post('/api/forgot-password', emailLimit, async (req, res) => {
     const email = normalizeEmail(req.body.email);
     if (!validEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
-    const user = db.prepare('SELECT * FROM users WHERE email=? AND verified=1').get(email);
+    const user = (await db.prepare('SELECT * FROM users WHERE email=? AND verified=1').get(email));
     if (user) queueEmail(user, 'reset');
     res.json({ success: true, message: emailMessage });
   });
@@ -3022,17 +3064,17 @@ app.post('/api/early-access', (req, res) => {
     if (!validateNewPassword(password)) return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
     const value = req.body.token;
     if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value) ||
-        !db.prepare("SELECT hash FROM tokens WHERE hash=? AND purpose='reset' AND expires>?").get(digest(value), Date.now())) {
+        !(await db.prepare("SELECT hash FROM tokens WHERE hash=? AND purpose='reset' AND expires>?").get(digest(value), Date.now()))) {
       return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
     }
     const encoded = await hashPassword(password);
-    const id = consume(req.body.token, 'reset', id => {
-      db.prepare('UPDATE users SET password=? WHERE id=?').run(encoded, id);
-      db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
-      db.prepare('DELETE FROM settings_email_changes WHERE user_id=?').run(id);
-      db.prepare('DELETE FROM settings_oauth_states WHERE user_id=?').run(id);
-      db.prepare('DELETE FROM tokens WHERE user_id=?').run(id);
-    });
+    const id = (await consume(req.body.token, 'reset', async id => {
+      (await db.prepare('UPDATE users SET password=? WHERE id=?').run(encoded, id));
+      (await db.prepare('DELETE FROM sessions WHERE user_id=?').run(id));
+      (await db.prepare('DELETE FROM settings_email_changes WHERE user_id=?').run(id));
+      (await db.prepare('DELETE FROM settings_oauth_states WHERE user_id=?').run(id));
+      (await db.prepare('DELETE FROM tokens WHERE user_id=?').run(id));
+    }));
     if (!id) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
     res.json({ success: true });
   });
@@ -3066,7 +3108,7 @@ app.post('/api/early-access', (req, res) => {
     const status = err.status === 413 ? 413 : err.status === 400 ? 400 : 503;
     res.status(status).json({ error: status === 413 ? 'This request is too large.' : status === 400 ? 'Invalid request.' : 'Unable to complete this request. Please try again shortly.' });
   });
-  return { app, db };
+  return { app, db, ready };
 }
 if (require.main === module) {
   // Initialise server-only configuration when started with `node server.js`.
@@ -3075,11 +3117,17 @@ if (require.main === module) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
-  const { app } = createApp();
+  const { app, db, ready } = createApp();
   const PORT = Number(process.env.PORT) || 3000;
   const HOST = '0.0.0.0';
-  app.listen(PORT, HOST, () => {
-    console.log(`CareerKraft running on http://${HOST}:${PORT}`);
+  ready.then(() => {
+    app.listen(PORT, HOST, () => {
+      console.log(`CareerKraft running on http://${HOST}:${PORT}`);
+    });
+  }).catch(async () => {
+    console.error('Could not connect to MySQL. Check DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD in .env.');
+    await db.close();
+    process.exitCode = 1;
   });
 }
 module.exports = { createApp };

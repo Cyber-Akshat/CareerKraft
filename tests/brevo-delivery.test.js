@@ -1,6 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
+// Load the legacy test backend before installing delivery-log spies.
+require('node:sqlite');
 const { createApp } = require('../server');
 
 const recipient = 'new-member@example.com';

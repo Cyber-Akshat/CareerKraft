@@ -21,7 +21,7 @@ test('progression checks ownership and completion, builds context, avoids duplic
   } } });
   const source=fs.readFileSync(require.resolve('../server'),'utf8');
   const start=source.indexOf('  function getNextRoadmapLevel(');
-  const end=source.indexOf('  function saveVerifiedSkills(',start);
+  const end=source.indexOf('  async function saveVerifiedSkills(',start);
   vm.runInContext(source.slice(start,end),context);
   const advance=userId=>context.advanceRoadmapLevelIfReady({userId,roadmapId:1});
   assert.equal((await advance(2)).advanced,false);
