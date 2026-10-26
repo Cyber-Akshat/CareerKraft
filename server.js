@@ -13,7 +13,7 @@ const { randomBytes, createHash } = require('node:crypto');
 const { isIP } = require('node:net');
 const { mkdirSync, writeFileSync, unlinkSync, existsSync } = require('node:fs');
 const path = require('node:path');
-const { createBrevoMailer } = require('./email-delivery');
+const { createBrevoMailer, createEmailJSMailer } = require('./email-delivery');
 const { installAccountSettings, preferencesFor } = require('./account-settings-server');
 const { hashPassword, verifyPassword, validateNewPassword, PASSWORD_POLICY_MESSAGE } = require('./password-security');
 const { createAuthSecurity } = require('./auth-security');
@@ -738,18 +738,26 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   app.use((req, res, next) => db.scope(() => {
     Promise.resolve(ready).then(() => next(), next);
   }));
-  const sendWithBrevo = createBrevoMailer({
-    apiKey: process.env.BREVO_API_KEY || process.env.BREVO,
-    from: process.env.MAIL_FROM,
-    fetchImpl: options.fetchBrevo || fetch
-  });
+  const sendWithProvider = process.env.MAIL_MODE === 'emailjs'
+    ? createEmailJSMailer({
+      serviceId: process.env.EMAILJS_SERVICE_ID || process.env.EMAIL_SERVICE_ID,
+      templateId: process.env.EMAILJS_TEMPLATE_ID,
+      publicKey: process.env.EMAILJS_PUBLIC_KEY || process.env.PUBLIC_API_KEY,
+      privateKey: process.env.EMAILJS_PRIVATE_KEY || process.env.PRIVATE_API_KEY,
+      fetchImpl: options.fetchEmailJS || fetch
+    })
+    : createBrevoMailer({
+      apiKey: process.env.BREVO_API_KEY || process.env.BREVO,
+      from: process.env.MAIL_FROM,
+      fetchImpl: options.fetchBrevo || fetch
+    });
   const send = options.sendMail || (async mail => {
     if (!production && process.env.MAIL_MODE === 'preview') {
       mkdirSync(path.join(dataDir, 'mail'), { recursive: true });
       writeFileSync(path.join(dataDir, 'mail', `${Date.now()}-${token().slice(0, 8)}.txt`), `To: ${mail.to}\nSubject: ${mail.subject}\n\n${mail.text}`);
       return;
     }
-    await sendWithBrevo(mail);
+    await sendWithProvider(mail);
   });
   const safeUser = async user => {
     if (!user) return null;

@@ -113,19 +113,35 @@ For local development, MAIL_MODE=preview saves emails privately to data/mail/.
 Open the local text file and copy its link into your browser. No email is
 delivered in this mode; preview is unavailable in production.
 
-For real delivery, set MAIL_MODE=brevo, BREVO_API_KEY and MAIL_FROM in .env, then
+For real delivery without an owned domain, use `MAIL_MODE=emailjs` with your
+connected Gmail account. Follow [the EmailJS setup guide](EMAILJS-SETUP.md) to
+create the shared template, enable non-browser API access, and set
+`EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` and `EMAILJS_PUBLIC_KEY`.
+An existing `EMAIL_SERVICE_ID` is also accepted as the service ID.
+Existing `PUBLIC_API_KEY` and `PRIVATE_API_KEY` values are accepted as aliases
+for the respective EmailJS keys; use the `EMAILJS_` names for new setup.
+`EMAILJS_PRIVATE_KEY` is optional and recommended; supply it if you enable private
+key authorization in EmailJS. The sender is your connected email account, not
+`MAIL_FROM`. The free plan allows 200 requests per month and two templates; one
+shared template handles all CareerKraft authentication emails. See
+[EmailJS pricing](https://www.emailjs.com/pricing/) and its
+[personal-email usage guidance](https://www.emailjs.com/docs/user-guide/connecting-email-services/).
+
+Alternatively, set MAIL_MODE=brevo, BREVO_API_KEY and MAIL_FROM in .env, then
 restart. BREVO is also supported as an alias for BREVO_API_KEY. MAIL_FROM accepts
 a plain email address or a display name, such as `CareerKraft <hello@example.com>`.
 Register and verify the sender in Brevo before sending; see
 [Brevo's transactional email setup](https://developers.brevo.com/docs/send-a-transactional-email).
 Verification emails, resends, password resets and email-change confirmations all
-use this shared Brevo HTTPS API transport. SMTP settings and Nodemailer are no
-longer required. Recipients do not need to connect a Google account.
+use the selected HTTPS API transport. SMTP settings and Nodemailer are no
+longer required. Recipients do not need to connect a Google account. The server
+does not fall back to another provider when a send fails.
 
 Delivery logs contain only sanitized status information, without request or
 response payloads, addresses, verification links, tokens or API keys. Failures
 return generic messages. API acceptance does not guarantee inbox delivery;
-check Brevo's delivery events and the recipient's spam folder if mail is missing.
+check the selected provider's email history/delivery events and the recipient's
+spam folder if mail is missing.
 
 For people using another device, APP_URL must be the publicly reachable HTTPS
 address of the app. A link to http://localhost:3000 opens the recipient's own
@@ -170,10 +186,11 @@ avatar files. Deletion requires the current password, or recent Google verificat
 for Google-only accounts, plus typing DELETE in the confirmation form.
 
 Keep .env and data/ private. For production, use HTTPS, persistent storage,
-NODE_ENV=production, MAIL_MODE=brevo and the public HTTPS APP_URL. Set BREVO_API_KEY
-and the verified MAIL_FROM in the host's environment too: Render does not deploy
-your local .env file. The server binds to 0.0.0.0 and uses the host's PORT, with
-3000 as the local fallback.
+NODE_ENV=production, MAIL_MODE=emailjs or MAIL_MODE=brevo and the public HTTPS
+APP_URL. Set the selected provider's credentials in the host's environment too:
+Render does not deploy your local .env file. EmailJS setup on Render is covered
+in [EMAILJS-SETUP.md](EMAILJS-SETUP.md). The server binds to 0.0.0.0 and uses the
+host's PORT, with 3000 as the local fallback.
 Configure the MySQL variables on your host as well; your local `.env` is not
 deployed automatically. Use persistent storage for private evidence/avatar files
 and maintain backups of both MySQL and those files. Multiple app instances need
@@ -246,10 +263,11 @@ and JSON (apart from the explicitly supported multipart uploads), and JSON bodie
 must be objects within the size limit. All account authorization and validation
 remain server-side.
 
-The .env file stays private and ignored by Git. Keep the Brevo API key and other
+The .env file stays private and ignored by Git. Keep email-provider keys and other
 OAuth/API secrets on the server, in its environment or a secret manager on public
-hosting. Never place the Brevo key in browser code. Restart the server
-after deploying these changes or changing environment configuration.
+hosting. EmailJS is called by the server; keep its private key and verification
+tokens out of browser code. Never place the Brevo key in browser code. Restart
+the server after deploying these changes or changing environment configuration.
 
 These changes harden the existing password and Google flow. The app does not yet
 implement passkeys or application-managed multi-factor authentication.
