@@ -9,7 +9,17 @@ const password = 'registration-password';
 const publicKey = 'emailjs-public-test-key';
 const privateKey = 'emailjs-private-test-key';
 const accepted = () => new Response('OK', { status: 200 });
-const tokenFrom = mail => new URL(mail.template_params.message.match(/https?:\/\/[^\s]+/)[0]).searchParams;
+const tokenFrom = mail => new URL(mail.template_params.action_url).searchParams;
+
+function actionLinkFrom(mail, page, tokenParameter = 'token') {
+  const link = new URL(mail.template_params.action_url);
+  assert.equal(link.origin, 'http://localhost:3000');
+  assert.equal(link.pathname, '/' + page);
+  assert.equal(link.href, mail.template_params.message.match(/https?:\/\/[^\s]+/)[0],
+    'The button must open the same complete link as the email message.');
+  assert.match(link.searchParams.get(tokenParameter), /^[a-f0-9]{64}$/);
+  return link;
+}
 
 async function waitFor(check) {
   for (let attempt = 0; attempt < 500; attempt++) {
@@ -72,7 +82,8 @@ function assertPrivateLogs(context) {
   const logged = JSON.stringify([...context.infoLogs, ...context.errorLogs]);
   const secrets = [recipient, publicKey, privateKey, 'private-provider-error-text'];
   for (const mail of context.mails) {
-    secrets.push(mail.template_params.message, mail.template_params.to_email, ...tokenFrom(mail).values());
+    secrets.push(mail.template_params.message, mail.template_params.action_url,
+      mail.template_params.to_email, ...tokenFrom(mail).values());
   }
   for (const secret of secrets) assert.equal(logged.includes(secret), false, 'Logs must omit keys, addresses, tokens, bodies and provider error text.');
 }
@@ -95,7 +106,7 @@ test('EmailJS delivers hashed, single-use verification links and confirms email 
   assert.equal(mail.template_params.to_email, recipient);
   assert.equal(mail.template_params.subject, 'Verify your CareerKraft email');
   assert.equal(mail.template_params.message.includes('This link expires in 60 minutes'), true);
-  const value = tokenFrom(mail).get('token');
+  const value = actionLinkFrom(mail, 'verify-email.html').searchParams.get('token');
   const saved = context.db.prepare('SELECT hash, purpose FROM tokens').get();
   assert.equal(saved.purpose, 'verify');
   assert.equal(saved.hash, createHash('sha256').update(value).digest('hex'));
@@ -110,9 +121,11 @@ test('EmailJS delivers hashed, single-use verification links and confirms email 
   assert.equal(context.mails[1].template_params.to_email, newEmail);
   assert.equal(context.mails[1].template_params.subject, 'Confirm your new CareerKraft email');
   assert.equal(context.db.prepare('SELECT email FROM users').get().email, recipient);
-  const confirmed = await context.request('/api/settings/email/confirm', { token: tokenFrom(context.mails[1]).get('emailToken') }, verified.cookie);
+  const emailToken = actionLinkFrom(context.mails[1], 'settings.html', 'emailToken').searchParams.get('emailToken');
+  const confirmed = await context.request('/api/settings/email/confirm', { token: emailToken }, verified.cookie);
   assert.equal(confirmed.status, 200);
   assert.equal(context.db.prepare('SELECT email FROM users').get().email, newEmail);
+  assert.equal((await context.request('/api/settings/email/confirm', { token: emailToken }, confirmed.cookie)).status, 400);
   assert.deepEqual(context.infoLogs, []);
   assert.deepEqual(context.errorLogs, []);
   assertPrivateLogs(context);
@@ -123,17 +136,20 @@ test('EmailJS resend replaces verification tokens and password reset revokes exi
   assert.equal((await context.register()).status, 202);
   await waitFor(() => context.mails.length === 1);
   assert.equal(context.mails[0].service_id, 'legacy_service_test');
-  const oldToken = tokenFrom(context.mails[0]).get('token');
+  const oldToken = actionLinkFrom(context.mails[0], 'verify-email.html').searchParams.get('token');
   assert.equal((await context.request('/api/resend', { email: recipient })).status, 200);
   await waitFor(() => context.mails.length === 2);
   assert.equal((await context.request('/api/verify', { token: oldToken })).status, 400);
-  const verified = await context.request('/api/verify', { token: tokenFrom(context.mails[1]).get('token') });
+  const resentToken = actionLinkFrom(context.mails[1], 'verify-email.html').searchParams.get('token');
+  assert.notEqual(resentToken, oldToken);
+  const verified = await context.request('/api/verify', { token: resentToken });
   assert.equal(verified.status, 200);
+  assert.equal((await context.request('/api/verify', { token: resentToken })).status, 400);
   assert.equal((await context.request('/api/forgot-password', { email: recipient })).status, 200);
   await waitFor(() => context.mails.length === 3);
   assert.equal(context.mails[2].template_id, 'template_test');
   assert.equal(context.mails[2].template_params.subject, 'Reset your CareerKraft password');
-  const resetToken = tokenFrom(context.mails[2]).get('token');
+  const resetToken = actionLinkFrom(context.mails[2], 'reset-password.html').searchParams.get('token');
   const saved = context.db.prepare('SELECT hash FROM tokens WHERE purpose=?').get('reset');
   assert.equal(saved.hash, createHash('sha256').update(resetToken).digest('hex'));
   assert.equal((await context.request('/api/reset-password', { token: resetToken, password: 'a different new test passphrase' })).status, 200);

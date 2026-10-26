@@ -85,6 +85,17 @@ function validCredential(value) {
     value.length <= 1000 && !/[\s\u0000-\u001f\u007f]/.test(value.trim());
 }
 
+function validActionUrl(value) {
+  if (typeof value !== 'string' || !value || value.length > 8192 ||
+      /[\s\u0000-\u001f\u007f-\u009f"'<>`\\]/.test(value) || !/^https?:\/\//i.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 async function emailJSFailureCode(response, status) {
   let reader;
   let complete = false;
@@ -161,13 +172,15 @@ function createEmailJSMailer({ serviceId, templateId, publicKey, privateKey,
         typeof now !== 'function' || typeof sleep !== 'function') failEmailJS('CONFIGURATION');
     if (!mail || !validEmail(mail.to) || typeof mail.subject !== 'string' ||
         !mail.subject.trim() || /[\r\n]/.test(mail.subject) ||
-        typeof mail.text !== 'string' || !mail.text.trim()) failEmailJS('INVALID_MESSAGE');
+        typeof mail.text !== 'string' || !mail.text.trim() ||
+        (mail.actionUrl !== undefined && !validActionUrl(mail.actionUrl))) failEmailJS('INVALID_MESSAGE');
 
     const body = JSON.stringify({
       service_id: serviceId.trim(), template_id: templateId.trim(), user_id: publicKey.trim(),
       ...(hasPrivateKey ? { accessToken: privateKey.trim() } : {}),
       template_params: {
-        to_email: mail.to, subject: mail.subject, message: mail.text, from_name: 'CareerKraft'
+        to_email: mail.to, subject: mail.subject, message: mail.text, from_name: 'CareerKraft',
+        ...(mail.actionUrl !== undefined ? { action_url: mail.actionUrl } : {})
       }
     });
     // EmailJS permits one request per second. Share the queue between mailers

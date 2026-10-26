@@ -40,6 +40,22 @@ single-use action link. Keep its double braces: EmailJS escapes the message
 instead of interpreting it as HTML. See
 [dynamic template variables](https://www.emailjs.com/docs/user-guide/dynamic-variables-templates/).
 
+If you keep your own email design, set the button's **Link / URL** to
+`{{action_url}}`. In the HTML editor, use:
+
+```html
+<a href="{{action_url}}">Verify CareerKraft Account!</a>
+```
+
+CareerKraft supplies `action_url` as the complete URL, including the unique
+single-use token for that email. A fixed `/verify-email.html` address cannot
+confirm an account by itself. Use double braces so EmailJS escapes the value.
+The supplied example uses a generic **Continue** button because the same field
+also handles password resets and account security links.
+
+Deploy the backend change before using this field in an existing template, then
+request a fresh email. Editing the template does not update emails already sent.
+
 The same template handles every authentication email, so do not hard-code a
 verification-only subject or a fixed recipient address. The HTML file is a
 setup artifact to copy into EmailJS; it is not a website page.

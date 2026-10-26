@@ -54,6 +54,55 @@ test('EmailJS sends the generic template from the backend and checks its plainte
   });
 });
 
+test('EmailJS supplies the complete tokenized action URL for a template button', async () => {
+  for (const actionUrl of [
+    'https://careerkraft.example/verify-email.html?token=private-test-token&source=email',
+    'http://localhost:3000/reset-password.html?token=private-test-token'
+  ]) {
+    const requests = [];
+    const send = createEmailJSMailer({ ...configuration, fetchImpl: async (_, request) => {
+      requests.push(JSON.parse(request.body));
+      return accepted();
+    } });
+    await send({ ...mail, actionUrl });
+    assert.equal(requests.length, 1);
+    assert.deepEqual(requests[0].template_params, {
+      to_email: mail.to, subject: mail.subject, message: mail.text, from_name: 'CareerKraft',
+      action_url: actionUrl
+    });
+  }
+});
+
+test('EmailJS rejects unsafe button URLs before sending or exposing the URL in logs', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  let requests = 0;
+  const send = createEmailJSMailer({ ...configuration, fetchImpl: async () => { requests += 1; } });
+  for (const actionUrl of [
+    null, '', ' ', 42, {}, '/verify-email.html?token=private-test-token',
+    'javascript:alert(1)', 'data:text/html,private-test-token', '//example.com/verify',
+    'https://', 'https://member:private-test-token@example.com/verify',
+    'https://example.com/verify?token=private-test-token\n',
+    'https://example.com/verify?token=private-test-token\u0000',
+    'https://example.com/verify?token=private-test-token\u0085',
+    'https://example.com/verify?token=private-test-token with-space',
+    'https://example.com/verify?token=private-test-token" onclick="alert(1)',
+    "https://example.com/verify?token=private-test-token'",
+    'https://example.com/verify?token=<private-test-token>',
+    'https://example.com/verify?token=`private-test-token`',
+    'https://example.com\\@other.example/verify?token=private-test-token',
+    'https://example.com/verify?token=' + 'a'.repeat(8192)
+  ]) {
+    logs.length = 0;
+    await assert.rejects(send({ ...mail, actionUrl }), { message: 'Email delivery failed.' });
+    assertFailureLog(logs, 'INVALID_MESSAGE');
+    if (typeof actionUrl === 'string' && actionUrl.trim()) {
+      assert.equal(JSON.stringify(logs).includes(actionUrl), false);
+    }
+  }
+  assert.equal(requests, 0);
+});
+
 test('EmailJS omits an absent optional private key', async () => {
   for (const privateKey of [undefined, null, '', '  ']) {
     const send = createEmailJSMailer({ ...configuration, privateKey, fetchImpl: async (_, request) => {

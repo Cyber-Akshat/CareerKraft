@@ -839,9 +839,11 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       await db.exec('COMMIT');
     } catch (error) { await db.exec('ROLLBACK'); throw error; }
     const page = purpose === 'verify' ? 'verify-email.html' : 'reset-password.html';
+    const actionUrl = `${base}/${page}?token=${value}`;
     try {
       await send({ to: user.email, subject: purpose === 'verify' ? 'Verify your CareerKraft email' : 'Reset your CareerKraft password',
-        text: `Hello ${user.name},\n\n${purpose === 'verify' ? 'Confirm your email' : 'Reset your password'} using this link:\n${base}/${page}?token=${value}\n\nThis link expires in 60 minutes and can be used once. Requesting a new email invalidates the previous link. If you did not request it, ignore this email.` });
+        actionUrl,
+        text: `Hello ${user.name},\n\n${purpose === 'verify' ? 'Confirm your email' : 'Reset your password'} using this link:\n${actionUrl}\n\nThis link expires in 60 minutes and can be used once. Requesting a new email invalidates the previous link. If you did not request it, ignore this email.` });
     } catch (error) { (await db.prepare('DELETE FROM tokens WHERE hash=?').run(digest(value))); throw error; }
   }
   async function consume(value, purpose, action) {

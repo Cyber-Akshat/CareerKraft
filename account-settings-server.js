@@ -381,9 +381,10 @@ function installAccountSettings({ app, db, options, base, production, dataDir, c
         new_email=excluded.new_email,expires=excluded.expires`).run(user.id, digest(value), user.email, email, Date.now() + 3600000);
       await db.exec('COMMIT');
     } catch (error) { await db.exec('ROLLBACK'); throw error; }
+    const actionUrl = `${base}/settings.html?emailToken=${value}`;
     try {
-      await send({ to: email, subject: 'Confirm your new CareerKraft email',
-        text: `Hello ${user.name},\n\nConfirm your new email address using this link:\n${base}/settings.html?emailToken=${value}\n\nSign in to the CareerKraft account that requested this change. This link expires in 60 minutes and can be used once. If you did not request this change, ignore this email.` });
+      await send({ to: email, subject: 'Confirm your new CareerKraft email', actionUrl,
+        text: `Hello ${user.name},\n\nConfirm your new email address using this link:\n${actionUrl}\n\nSign in to the CareerKraft account that requested this change. This link expires in 60 minutes and can be used once. If you did not request this change, ignore this email.` });
     } catch {
       await db.prepare('DELETE FROM settings_email_changes WHERE hash=?').run(digest(value));
       return res.status(503).json({ error: 'The confirmation email could not be sent. Your email address has not changed.' });
