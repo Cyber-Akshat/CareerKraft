@@ -116,6 +116,16 @@ and [Node.js version settings](https://render.com/docs/node-version).
 
 ## Check delivery
 
+For an account you already registered, open the verification page and click
+**Resend verification email**. Repeating registration with the same address
+returns the same neutral response but does not send another email.
+
+For local testing, open **http://localhost:3000**, matching `APP_URL`. A PyCharm
+static preview does not run the authentication backend. Using `127.0.0.1` while
+`APP_URL` is `http://localhost:3000` also fails the application's origin check.
+For Render, configure its Environment settings separately and use its public
+HTTPS URL for `APP_URL`.
+
 After setup, request a verification email through CareerKraft and check the
 connected Gmail account and **Email History** in EmailJS. A successful API
 response confirms acceptance, not inbox delivery. If mail is missing, check
@@ -123,6 +133,25 @@ the recipient's spam folder, the monthly allowance, and the Gmail connection.
 If EmailJS reports non-browser access is disabled, return to **Account →
 Security**. If the wrong person receives an email, confirm **To Email** is
 `{{to_email}}` rather than a fixed address.
+
+A successful dashboard test of a different template does not validate the
+template in `.env`. Confirm that `EMAILJS_TEMPLATE_ID` matches the template
+containing `{{message}}`, and that its **To Email** field is `{{to_email}}`.
+Dashboard tests also do not establish that non-browser API requests are enabled.
+
+The server logs fixed diagnostic codes for recognized EmailJS failures, without
+printing provider response text:
+
+| Log code | Next step |
+| --- | --- |
+| `NON_BROWSER_API_DISABLED` | Enable non-browser API requests under Account / Security. |
+| `PUBLIC_KEY_REJECTED` / `PRIVATE_KEY_REJECTED` | Copy the keys from the same EmailJS account as the service and template. |
+| `TEMPLATE_NOT_FOUND` / `SERVICE_NOT_FOUND` | Check the corresponding ID against the EmailJS dashboard. |
+| `RECIPIENT_INVALID` | Set the template's To Email field to `{{to_email}}`. |
+| `GMAIL_AUTHORIZATION` | Reconnect Gmail in Email Services and grant permission to send email. |
+| `QUOTA_EXCEEDED` / `RATE_LIMITED` | Check the monthly allowance, or wait before requesting another message. |
+| `ORIGIN_REJECTED` / `CAPTCHA_REQUIRED` | Review the template and account security settings for backend API use. |
+| `HTTP_ERROR` | Check EmailJS Email History for details; the response was unrecognized or unavailable. |
 
 Keep API keys, email addresses, message bodies and authentication links out of
 logs and public issue reports. Use the existing local `MAIL_MODE=preview` only

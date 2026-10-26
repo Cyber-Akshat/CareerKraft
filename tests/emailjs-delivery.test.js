@@ -99,7 +99,7 @@ test('EmailJS rejects invalid recipients, multiple recipients and injected subje
   assert.equal(requests, 0);
 });
 
-test('EmailJS treats rejected HTTP responses safely without parsing private provider bodies', async t => {
+test('EmailJS cancels rejected HTTP responses without a stream reader and never uses an unbounded text read', async t => {
   const logs = [];
   t.mock.method(console, 'error', (...args) => logs.push(args));
   for (const status of [201, 202, 302, 400, 401, 429, 500]) {
@@ -107,12 +107,92 @@ test('EmailJS treats rejected HTTP responses safely without parsing private prov
     let cancelled = false;
     const send = createEmailJSMailer({ ...configuration, fetchImpl: async () => ({
       status, body: { async cancel() { cancelled = true; } },
-      text() { assert.fail('Failed HTTP response bodies must not be read.'); }
+      text() { assert.fail('Failed HTTP response bodies must not use an unbounded text read.'); }
     }) });
     await assert.rejects(send(mail), { message: 'Email delivery failed.' });
     assert.equal(cancelled, true);
-    assertFailureLog(logs, 'HTTP_ERROR', status);
+    assertFailureLog(logs, status === 429 ? 'RATE_LIMITED' : 'HTTP_ERROR', status);
   }
+});
+
+test('EmailJS logs fixed actionable failure codes while keeping provider details private', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const cases = [
+    ['API calls are disabled for non-browser applications', 'NON_BROWSER_API_DISABLED', 403],
+    ['The Public Key is invalid', 'PUBLIC_KEY_REJECTED', 400],
+    ['The user ID is invalid', 'PUBLIC_KEY_REJECTED', 400],
+    ['Invalid private key', 'PRIVATE_KEY_REJECTED', 403],
+    ['The accessToken is incorrect', 'PRIVATE_KEY_REJECTED', 403],
+    ['The template ID not found', 'TEMPLATE_NOT_FOUND', 400],
+    ['The service ID is invalid', 'SERVICE_NOT_FOUND', 400],
+    ['The recipients address is empty', 'RECIPIENT_INVALID', 422],
+    ['Recipient email address is corrupted', 'RECIPIENT_INVALID', 422],
+    ['Gmail_API: Request had insufficient authentication scopes.', 'GMAIL_AUTHORIZATION', 412],
+    ['Gmail_API: invalid_grant', 'GMAIL_AUTHORIZATION', 412],
+    ['The monthly email quota has been exceeded', 'QUOTA_EXCEEDED', 429],
+    ['Too many requests', 'RATE_LIMITED', 400],
+    ['The origin is not allowed', 'ORIGIN_REJECTED', 403],
+    ['reCAPTCHA verification failed', 'CAPTCHA_REQUIRED', 400],
+    ['Unrecognized provider-private-detail', 'HTTP_ERROR', 500]
+  ];
+  for (const [details, code, status] of cases) {
+    logs.length = 0;
+    const privateDetails = `${details}\r\nprovider-private-detail ${Object.values(configuration).join(' ')} ${mail.to} ${mail.text}`;
+    const send = createEmailJSMailer({ ...configuration, fetchImpl: async () => new Response(privateDetails, { status }) });
+    await assert.rejects(send(mail), { message: 'Email delivery failed.' });
+    assertFailureLog(logs, code, status);
+  }
+});
+
+test('EmailJS bounds diagnostic reads to 4096 bytes and cancels oversized provider responses', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  const details = 'API calls are disabled for non-browser applications';
+  const sendAtLimit = createEmailJSMailer({ ...configuration, fetchImpl: async () => new Response(details.padEnd(4096), { status: 403 }) });
+  await assert.rejects(sendAtLimit(mail), { message: 'Email delivery failed.' });
+  assertFailureLog(logs, 'NON_BROWSER_API_DISABLED', 403);
+
+  for (const chunks of [
+    [details.padEnd(4097)],
+    [details.padEnd(2048), `provider-private-detail ${mail.text}`.padEnd(2049)],
+    [details.padEnd(100000)]
+  ]) {
+    logs.length = 0;
+    let cancelled = false;
+    const body = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+      },
+      cancel() { cancelled = true; }
+    });
+    const send = createEmailJSMailer({ ...configuration, fetchImpl: async () => ({ status: 403, body }) });
+    await assert.rejects(send(mail), { message: 'Email delivery failed.' });
+    assert.equal(cancelled, true);
+    assertFailureLog(logs, 'HTTP_ERROR', 403);
+  }
+});
+
+test('EmailJS falls back safely when a diagnostic stream fails after a recognizable error', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  let reads = 0, cancelled = false, released = false;
+  const send = createEmailJSMailer({ ...configuration, fetchImpl: async () => ({
+    status: 403,
+    body: { getReader() { return {
+      async read() {
+        if (++reads === 1) return { done: false, value: new TextEncoder().encode('The Public Key is invalid') };
+        throw new Error(`provider-private-detail ${configuration.privateKey} ${mail.text}`);
+      },
+      async cancel() { cancelled = true; },
+      releaseLock() { released = true; }
+    }; } },
+    text() { assert.fail('Diagnostic failures must not fall back to unbounded reads.'); }
+  }) });
+  await assert.rejects(send(mail), { message: 'Email delivery failed.' });
+  assert.equal(cancelled, true);
+  assert.equal(released, true);
+  assertFailureLog(logs, 'HTTP_ERROR', 403);
 });
 
 test('EmailJS requires OK instead of trusting a successful status alone', async t => {

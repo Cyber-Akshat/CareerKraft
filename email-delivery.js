@@ -85,6 +85,71 @@ function validCredential(value) {
     value.length <= 1000 && !/[\s\u0000-\u001f\u007f]/.test(value.trim());
 }
 
+async function emailJSFailureCode(response, status) {
+  let reader;
+  let complete = false;
+  let details = '';
+  try {
+    // Provider errors can contain account data and submitted template variables.
+    // Read only a small response, then convert it to a fixed diagnostic code.
+    reader = response?.body?.getReader?.();
+    if (reader) {
+      const decoder = new TextDecoder();
+      let bytes = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          complete = true;
+          details += decoder.decode();
+          break;
+        }
+        if (!(value instanceof Uint8Array) || value.byteLength > 4096 - bytes) {
+          details = '';
+          break;
+        }
+        bytes += value.byteLength;
+        details += decoder.decode(value, { stream: true });
+      }
+    }
+  } catch {
+    details = '';
+  } finally {
+    try {
+      if (reader) {
+        if (!complete) await reader.cancel();
+        reader.releaseLock();
+      } else {
+        await response?.body?.cancel();
+      }
+    } catch {}
+  }
+  const text = details.toLowerCase().replace(/[\u0000-\u0020\u007f]+/g, ' ');
+  if (/api (?:calls|requests) are disabled for non.browser applications/.test(text)) {
+    return 'NON_BROWSER_API_DISABLED';
+  }
+  const rejected = '(?:invalid|incorrect|not found|not valid|unknown|rejected|does not exist)';
+  const rejects = name => new RegExp(`\\b${name}\\b(?:\\s+(?:is|was|has been))?\\s*[:=]?\\s*${rejected}|${rejected}\\s+(?:the\\s+)?\\b${name}\\b`).test(text);
+  if (rejects('(?:private[ _-]?key|access[ _-]?token)')) return 'PRIVATE_KEY_REJECTED';
+  if (rejects('(?:public[ _-]?key|user[ _-]?id)')) return 'PUBLIC_KEY_REJECTED';
+  if (rejects('template(?:[ _-]?id)?')) return 'TEMPLATE_NOT_FOUND';
+  if (rejects('service(?:[ _-]?id)?')) return 'SERVICE_NOT_FOUND';
+  if (/recipients?(?:['’]s)?(?: email)?(?: address)?.{0,40}(?:empty|missing|invalid|corrupt)/.test(text)) {
+    return 'RECIPIENT_INVALID';
+  }
+  if (/gmail/.test(text) && /insufficient.{0,30}scopes|invalid[ _-]?grant|authentication|authorization|(?:access|token).{0,30}(?:expired|revoked|denied|invalid)/.test(text)) {
+    return 'GMAIL_AUTHORIZATION';
+  }
+  if (/captcha/.test(text)) return 'CAPTCHA_REQUIRED';
+  if (/(?:origin|domain).{0,60}(?:not allowed|forbidden|blocked|allowlist|whitelist)/.test(text)) {
+    return 'ORIGIN_REJECTED';
+  }
+  if (/(?:quota|monthly limit).{0,40}(?:exceed|reach|exhaust)|(?:exceed|reach|exhaust).{0,40}(?:quota|monthly limit)/.test(text)) {
+    return 'QUOTA_EXCEEDED';
+  }
+  if (status === 429 || /rate limit|too many requests/.test(text)) return 'RATE_LIMITED';
+  return 'HTTP_ERROR';
+}
+
 function createEmailJSMailer({ serviceId, templateId, publicKey, privateKey,
   fetchImpl = globalThis.fetch, now = Date.now,
   sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)) } = {}) {
@@ -131,8 +196,7 @@ function createEmailJSMailer({ serviceId, templateId, publicKey, privateKey,
       const status = Number.isInteger(response?.status) && response.status >= 100 && response.status <= 599
         ? response.status : null;
       if (status !== 200) {
-        try { await response?.body?.cancel(); } catch {}
-        failEmailJS('HTTP_ERROR', status);
+        failEmailJS(await emailJSFailureCode(response, status), status);
       }
       let acknowledgement;
       try { acknowledgement = await response.text(); }
