@@ -121,7 +121,9 @@ test('every page has a unique useful title, mobile viewport, favicon, working lo
   const documents = new Map();
   const titles = new Set();
   const resources = new Set();
-  const filenames = readdirSync(root).filter(filename => filename.endsWith('.html'));
+  // Trustpilot's verification payload is not a site page and must stay unmodified.
+  const filenames = readdirSync(root).filter(filename => filename.endsWith('.html') &&
+    filename !== 'dd8adc22-d472-4bce-94ad-d465f4689348.html');
   try {
     for (const filename of filenames) {
       documents.set('/' + filename, new JSDOM(readFileSync(path.join(root, filename), 'utf8'), { url: base + '/' + filename }));

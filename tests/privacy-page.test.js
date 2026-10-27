@@ -120,7 +120,9 @@ test('privacy disclosures include the real session cookie names, an AI provider 
 
 test('every public HTML footer links directly to the Privacy Policy and Terms also link to it', t => {
   const policy = page(t, 'privacy.html').window.document;
-  for (const filename of readdirSync(root).filter(name => name.endsWith('.html'))) {
+  // Trustpilot's verification payload is not a site page and must stay unmodified.
+  for (const filename of readdirSync(root).filter(name => name.endsWith('.html') &&
+    name !== 'dd8adc22-d472-4bce-94ad-d465f4689348.html')) {
     const document = page(t, filename).window.document;
     const footer = document.querySelector('footer nav[aria-label="Footer navigation"]')?.closest('footer');
     assert.ok(footer, `${filename} has a site footer`);

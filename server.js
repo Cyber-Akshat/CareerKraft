@@ -3095,6 +3095,7 @@ app.post('/api/early-access', async (req, res) => {
   const publicFiles = new Set(['404.html','signup.html','site.css','site.js','settings.html','settings.css','settings.js','index.html','terms.html','terms.css','auth.html','verify-email.html','onboarding.html','career.html','dashboard.html','activity.html','activity.css','activity.js','evidence-policy.js','module-formatting.js','reset-password.html','styles.css','auth.css','onboarding.css','career.css','dashboard.css','lumia-widget.css','career-data.js','cursor.css','script.js','auth.js','auth-api.js','verify-email.js','onboarding.js','career.js','dashboard.js','lumia-widget.js','reset-password.js','cursor.js','auth-theme.js']);
   app.use('/assets', express.static(path.join(__dirname, 'assets'), { dotfiles: 'deny' }));
   publicFiles.add('privacy.html');
+  publicFiles.add('dd8adc22-d472-4bce-94ad-d465f4689348.html');
   publicFiles.add('accessibility.js');
   publicFiles.add('dashboard-tour.js');
   publicFiles.add('dashboard-tour.css');
