@@ -860,10 +860,11 @@ if (["register", "signup"].includes(new URLSearchParams(window.location.search).
 else showLogin();
 
 const authError = new URLSearchParams(window.location.search).get("error");
+const googleFailureMessage = "Google sign-in failed. If you registered with a password, sign in with it, then connect Google in Account settings.";
 const authErrors = {
   google_unconfigured: "Google sign-in needs server configuration.",
-  google_failed: "Google sign-in failed. Please try again.",
-  google_existing_account: "Google sign-in failed. Please try again."
+  google_failed: googleFailureMessage,
+  google_existing_account: googleFailureMessage
 };
 if (authErrors[authError]) showMessage(loginMessage, authErrors[authError], "error");
 if (new URLSearchParams(window.location.search).get("account") === "deleted") {

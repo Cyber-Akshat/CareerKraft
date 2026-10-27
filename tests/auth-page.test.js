@@ -210,9 +210,12 @@ test('forgot-password shows neutral eligibility text and preserves server rate-l
 });
 
 test('Google collision callbacks reveal no account-existence details', async t => {
-  const { d } = await authPage(t, { url: 'http://localhost:3000/auth.html?error=google_existing_account' });
-  assert.equal(d.getElementById('login-message').textContent, 'Google sign-in failed. Please try again.');
-  assert.doesNotMatch(d.getElementById('login-message').textContent, /already|existing|uses this email/);
+  for (const code of ['google_failed', 'google_existing_account']) {
+    const { d } = await authPage(t, { url: `http://localhost:3000/auth.html?error=${code}` });
+    assert.equal(d.getElementById('login-message').textContent,
+      'Google sign-in failed. If you registered with a password, sign in with it, then connect Google in Account settings.');
+    assert.doesNotMatch(d.getElementById('login-message').textContent, /already|existing|uses this email/);
+  }
 });
 
 test('signup entry opens registration with its own useful title', async t => {
