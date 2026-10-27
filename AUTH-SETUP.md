@@ -117,13 +117,16 @@ For real delivery without an owned domain, use `MAIL_MODE=emailjs` with your
 connected Gmail account. Follow [the EmailJS setup guide](EMAILJS-SETUP.md) to
 create the shared template, enable non-browser API access, and set
 `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` and `EMAILJS_PUBLIC_KEY`.
+For a separate password-reset template, also set `EMAILJS_RESET_TEMPLATE_ID`
+(or `EMAILJS_TEMPLATE_ID1`). Without either setting, resets use the shared
+template. Verification resends continue to use `EMAILJS_TEMPLATE_ID`.
 An existing `EMAIL_SERVICE_ID` is also accepted as the service ID.
 Existing `PUBLIC_API_KEY` and `PRIVATE_API_KEY` values are accepted as aliases
 for the respective EmailJS keys; use the `EMAILJS_` names for new setup.
 `EMAILJS_PRIVATE_KEY` is optional and recommended; supply it if you enable private
 key authorization in EmailJS. The sender is your connected email account, not
-`MAIL_FROM`. The free plan allows 200 requests per month and two templates; one
-shared template handles all CareerKraft authentication emails. See
+`MAIL_FROM`. The free plan allows 200 requests per month and two templates; a
+shared template can handle all CareerKraft authentication emails. See
 [EmailJS pricing](https://www.emailjs.com/pricing/) and its
 [personal-email usage guidance](https://www.emailjs.com/docs/user-guide/connecting-email-services/).
 

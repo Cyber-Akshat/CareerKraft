@@ -161,13 +161,15 @@ async function emailJSFailureCode(response, status) {
   return 'HTTP_ERROR';
 }
 
-function createEmailJSMailer({ serviceId, templateId, publicKey, privateKey,
+function createEmailJSMailer({ serviceId, templateId, resetTemplateId, publicKey, privateKey,
   fetchImpl = globalThis.fetch, now = Date.now,
   sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)) } = {}) {
   return async function send(mail) {
+    const selectedTemplateId = mail?.purpose === 'reset' && resetTemplateId !== undefined
+      ? resetTemplateId : templateId;
     const hasPrivateKey = privateKey !== undefined && privateKey !== null &&
       !(typeof privateKey === 'string' && !privateKey.trim());
-    if (!validCredential(serviceId) || !validCredential(templateId) || !validCredential(publicKey) ||
+    if (!validCredential(serviceId) || !validCredential(selectedTemplateId) || !validCredential(publicKey) ||
         (hasPrivateKey && !validCredential(privateKey)) || typeof fetchImpl !== 'function' ||
         typeof now !== 'function' || typeof sleep !== 'function') failEmailJS('CONFIGURATION');
     if (!mail || !validEmail(mail.to) || typeof mail.subject !== 'string' ||
@@ -176,7 +178,7 @@ function createEmailJSMailer({ serviceId, templateId, publicKey, privateKey,
         (mail.actionUrl !== undefined && !validActionUrl(mail.actionUrl))) failEmailJS('INVALID_MESSAGE');
 
     const body = JSON.stringify({
-      service_id: serviceId.trim(), template_id: templateId.trim(), user_id: publicKey.trim(),
+      service_id: serviceId.trim(), template_id: selectedTemplateId.trim(), user_id: publicKey.trim(),
       ...(hasPrivateKey ? { accessToken: privateKey.trim() } : {}),
       template_params: {
         to_email: mail.to, subject: mail.subject, message: mail.text, from_name: 'CareerKraft',

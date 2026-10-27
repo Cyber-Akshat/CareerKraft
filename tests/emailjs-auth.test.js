@@ -34,6 +34,7 @@ async function setup(t, delivery = accepted, overrides = {}) {
     NODE_ENV: 'development', MAIL_MODE: 'emailjs', MAIL_FROM: '', BREVO: '', BREVO_API_KEY: '',
     EMAILJS_SERVICE_ID: 'service_test', EMAIL_SERVICE_ID: '',
     EMAILJS_TEMPLATE_ID: 'template_test', EMAILJS_PUBLIC_KEY: publicKey, EMAILJS_PRIVATE_KEY: privateKey,
+    EMAILJS_RESET_TEMPLATE_ID: '', EMAILJS_TEMPLATE_ID1: '',
     PUBLIC_API_KEY: '', PRIVATE_API_KEY: '',
     ...overrides
   };
@@ -74,7 +75,7 @@ async function setup(t, delivery = accepted, overrides = {}) {
   }
   return {
     db, mails, calls, infoLogs, errorLogs, request,
-    register: () => request('/api/register', { email: ' New-Member@Example.com ', name: 'New Member', password, terms: true })
+    register: (extra = {}) => request('/api/register', { email: ' New-Member@Example.com ', name: 'New Member', password, terms: true, ...extra })
   };
 }
 
@@ -89,8 +90,8 @@ function assertPrivateLogs(context) {
 }
 
 test('EmailJS delivers hashed, single-use verification links and confirms email changes without MAIL_FROM', async t => {
-  const context = await setup(t);
-  const registered = await context.register();
+  const context = await setup(t, accepted, { EMAILJS_RESET_TEMPLATE_ID: 'template_reset' });
+  const registered = await context.register({ purpose: 'reset', template_id: 'template_reset' });
   assert.equal(registered.status, 202);
   assert.equal(registered.body.session, null);
   await waitFor(() => context.mails.length === 1);
@@ -114,7 +115,9 @@ test('EmailJS delivers hashed, single-use verification links and confirms email 
   assert.equal(verified.status, 200);
   assert.equal((await context.request('/api/verify', { token: value })).status, 400);
   const newEmail = 'changed-member@example.org';
-  const change = await context.request('/api/settings/email', { email: newEmail, currentPassword: password }, verified.cookie);
+  const change = await context.request('/api/settings/email', {
+    email: newEmail, currentPassword: password, purpose: 'reset', template_id: 'template_reset'
+  }, verified.cookie);
   assert.equal(change.status, 200);
   assert.equal(context.mails.length, 2);
   assert.equal(context.mails[1].template_id, 'template_test');
@@ -131,31 +134,63 @@ test('EmailJS delivers hashed, single-use verification links and confirms email 
   assertPrivateLogs(context);
 });
 
-test('EmailJS resend replaces verification tokens and password reset revokes existing sessions', async t => {
-  const context = await setup(t, accepted, { EMAILJS_SERVICE_ID: '', EMAIL_SERVICE_ID: 'legacy_service_test' });
+for (const scenario of [
+  { name: 'canonical reset template', environment: { EMAILJS_RESET_TEMPLATE_ID: 'template_reset' }, template: 'template_reset' },
+  { name: 'legacy reset template alias', environment: { EMAILJS_TEMPLATE_ID1: 'template_reset_legacy' }, template: 'template_reset_legacy' },
+  { name: 'canonical reset template precedence', environment: { EMAILJS_RESET_TEMPLATE_ID: 'template_reset', EMAILJS_TEMPLATE_ID1: 'template_reset_legacy' }, template: 'template_reset' },
+  { name: 'unset reset template fallback', environment: {}, template: 'template_test' }
+]) {
+  test('EmailJS ' + scenario.name + ' preserves single-use resend and password-reset links', async t => {
+    const context = await setup(t, accepted, {
+      EMAILJS_SERVICE_ID: '', EMAIL_SERVICE_ID: 'legacy_service_test', ...scenario.environment
+    });
+    assert.equal((await context.register()).status, 202);
+    await waitFor(() => context.mails.length === 1);
+    assert.equal(context.mails[0].service_id, 'legacy_service_test');
+    assert.equal(context.mails[0].template_id, 'template_test');
+    const oldToken = actionLinkFrom(context.mails[0], 'verify-email.html').searchParams.get('token');
+    assert.equal((await context.request('/api/resend', { email: recipient, purpose: 'reset', template_id: 'template_user_selected' })).status, 200);
+    await waitFor(() => context.mails.length === 2);
+    assert.equal(context.mails[1].template_id, 'template_test');
+    assert.equal((await context.request('/api/verify', { token: oldToken })).status, 400);
+    const resentToken = actionLinkFrom(context.mails[1], 'verify-email.html').searchParams.get('token');
+    assert.notEqual(resentToken, oldToken);
+    const verified = await context.request('/api/verify', { token: resentToken });
+    assert.equal(verified.status, 200);
+    assert.equal((await context.request('/api/verify', { token: resentToken })).status, 400);
+    assert.equal((await context.request('/api/forgot-password', { email: recipient, purpose: 'verify', template_id: 'template_user_selected' })).status, 200);
+    await waitFor(() => context.mails.length === 3);
+    assert.equal(context.mails[2].template_id, scenario.template);
+    assert.equal(context.mails[2].template_params.subject, 'Reset your CareerKraft password');
+    const resetToken = actionLinkFrom(context.mails[2], 'reset-password.html').searchParams.get('token');
+    const saved = context.db.prepare('SELECT hash FROM tokens WHERE purpose=?').get('reset');
+    assert.equal(saved.hash, createHash('sha256').update(resetToken).digest('hex'));
+    assert.equal((await context.request('/api/reset-password', { token: resetToken, password: 'a different new test passphrase' })).status, 200);
+    assert.equal((await context.request('/api/session', undefined, verified.cookie)).body.session, null);
+    assert.equal((await context.request('/api/reset-password', { token: resetToken, password })).status, 400);
+    assertPrivateLogs(context);
+  });
+}
+
+test('an invalid reset template leaves verification working and removes the failed reset token', async t => {
+  const context = await setup(t, accepted, { EMAILJS_RESET_TEMPLATE_ID: 'private-reset-template\nInjected' });
   assert.equal((await context.register()).status, 202);
   await waitFor(() => context.mails.length === 1);
-  assert.equal(context.mails[0].service_id, 'legacy_service_test');
-  const oldToken = actionLinkFrom(context.mails[0], 'verify-email.html').searchParams.get('token');
-  assert.equal((await context.request('/api/resend', { email: recipient })).status, 200);
-  await waitFor(() => context.mails.length === 2);
-  assert.equal((await context.request('/api/verify', { token: oldToken })).status, 400);
-  const resentToken = actionLinkFrom(context.mails[1], 'verify-email.html').searchParams.get('token');
-  assert.notEqual(resentToken, oldToken);
-  const verified = await context.request('/api/verify', { token: resentToken });
+  assert.equal(context.mails[0].template_id, 'template_test');
+  const verified = await context.request('/api/verify', {
+    token: actionLinkFrom(context.mails[0], 'verify-email.html').searchParams.get('token')
+  });
   assert.equal(verified.status, 200);
-  assert.equal((await context.request('/api/verify', { token: resentToken })).status, 400);
   assert.equal((await context.request('/api/forgot-password', { email: recipient })).status, 200);
-  await waitFor(() => context.mails.length === 3);
-  assert.equal(context.mails[2].template_id, 'template_test');
-  assert.equal(context.mails[2].template_params.subject, 'Reset your CareerKraft password');
-  const resetToken = actionLinkFrom(context.mails[2], 'reset-password.html').searchParams.get('token');
-  const saved = context.db.prepare('SELECT hash FROM tokens WHERE purpose=?').get('reset');
-  assert.equal(saved.hash, createHash('sha256').update(resetToken).digest('hex'));
-  assert.equal((await context.request('/api/reset-password', { token: resetToken, password: 'a different new test passphrase' })).status, 200);
-  assert.equal((await context.request('/api/session', undefined, verified.cookie)).body.session, null);
-  assert.equal((await context.request('/api/reset-password', { token: resetToken, password })).status, 400);
+  await waitFor(() => context.errorLogs.some(entry => entry[0] === 'Authentication email delivery failed.'));
+  assert.equal(context.mails.length, 1, 'Invalid reset configuration must not send through the primary template.');
+  assert.equal(context.db.prepare('SELECT COUNT(*) AS count FROM tokens WHERE purpose=?').get('reset').count, 0);
+  assert.deepEqual(context.errorLogs.find(entry => entry[0] === 'EmailJS email failed.'), [
+    'EmailJS email failed.', { code: 'CONFIGURATION', status: null }
+  ]);
+  assert.notEqual((await context.request('/api/session', undefined, verified.cookie)).body.session, null);
   assertPrivateLogs(context);
+  assert.equal(JSON.stringify(context.errorLogs).includes('private-reset-template'), false);
 });
 
 test('EmailJS supports the existing PUBLIC_API_KEY and PRIVATE_API_KEY environment aliases', async t => {

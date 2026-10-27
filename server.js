@@ -742,6 +742,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     ? createEmailJSMailer({
       serviceId: process.env.EMAILJS_SERVICE_ID || process.env.EMAIL_SERVICE_ID,
       templateId: process.env.EMAILJS_TEMPLATE_ID,
+      resetTemplateId: process.env.EMAILJS_RESET_TEMPLATE_ID || process.env.EMAILJS_TEMPLATE_ID1 || undefined,
       publicKey: process.env.EMAILJS_PUBLIC_KEY || process.env.PUBLIC_API_KEY,
       privateKey: process.env.EMAILJS_PRIVATE_KEY || process.env.PRIVATE_API_KEY,
       fetchImpl: options.fetchEmailJS || fetch
@@ -842,7 +843,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     const actionUrl = `${base}/${page}?token=${value}`;
     try {
       await send({ to: user.email, subject: purpose === 'verify' ? 'Verify your CareerKraft email' : 'Reset your CareerKraft password',
-        actionUrl,
+        purpose, actionUrl,
         text: `Hello ${user.name},\n\n${purpose === 'verify' ? 'Confirm your email' : 'Reset your password'} using this link:\n${actionUrl}\n\nThis link expires in 60 minutes and can be used once. Requesting a new email invalidates the previous link. If you did not request it, ignore this email.` });
     } catch (error) { (await db.prepare('DELETE FROM tokens WHERE hash=?').run(digest(value))); throw error; }
   }

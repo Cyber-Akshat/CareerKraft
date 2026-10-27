@@ -54,6 +54,68 @@ test('EmailJS sends the generic template from the backend and checks its plainte
   });
 });
 
+test('EmailJS uses the reset template only for its explicit internal reset purpose', async () => {
+  const requests = [];
+  const send = createEmailJSMailer({ ...configuration, resetTemplateId: 'template_reset', fetchImpl: async (_, request) => {
+    requests.push(JSON.parse(request.body));
+    return accepted();
+  } });
+  for (const [message, expectedTemplate] of [
+    [{ ...mail, purpose: 'reset' }, 'template_reset'],
+    [{ ...mail, purpose: 'verify', subject: 'Reset your CareerKraft password' }, configuration.templateId],
+    [{ ...mail, subject: 'Reset your CareerKraft password', text: 'Reset your password now.' }, configuration.templateId],
+    [{ ...mail, purpose: 'RESET', actionUrl: 'https://example.com/reset-password.html?token=test' }, configuration.templateId],
+    [{ ...mail, purpose: 'email-change', template_id: 'template_reset', templateId: 'template_reset' }, configuration.templateId]
+  ]) {
+    await send(message);
+    const payload = requests.at(-1);
+    assert.equal(payload.template_id, expectedTemplate);
+    assert.equal(Object.hasOwn(payload, 'purpose'), false);
+    assert.equal(Object.hasOwn(payload.template_params, 'purpose'), false);
+  }
+  assert.equal(requests.length, 5);
+});
+
+test('EmailJS keeps the primary template for resets when the optional reset template is absent', async () => {
+  let requests = 0;
+  const send = createEmailJSMailer({ ...configuration, resetTemplateId: undefined, fetchImpl: async (_, request) => {
+    requests += 1;
+    assert.equal(JSON.parse(request.body).template_id, configuration.templateId);
+    return accepted();
+  } });
+  await send({ ...mail, purpose: 'reset' });
+  assert.equal(requests, 1);
+});
+
+test('EmailJS validates only the selected template and never falls back from an invalid reset template', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...args) => logs.push(args));
+  for (const resetTemplateId of [null, '', '  ', 42, 'private-reset-template\nInjected']) {
+    const requests = [];
+    const send = createEmailJSMailer({ ...configuration, resetTemplateId, fetchImpl: async (_, request) => {
+      requests.push(JSON.parse(request.body));
+      return accepted();
+    } });
+    logs.length = 0;
+    await send({ ...mail, purpose: 'verify' });
+    await assert.rejects(send({ ...mail, purpose: 'reset' }), { message: 'Email delivery failed.' });
+    assertFailureLog(logs, 'CONFIGURATION');
+    assert.equal(JSON.stringify(logs).includes('private-reset-template'), false);
+    await send({ ...mail, purpose: 'verify' });
+    assert.deepEqual(requests.map(request => request.template_id), [configuration.templateId, configuration.templateId]);
+  }
+  logs.length = 0;
+  const requests = [];
+  const send = createEmailJSMailer({ ...configuration, templateId: null, resetTemplateId: 'template_reset', fetchImpl: async (_, request) => {
+    requests.push(JSON.parse(request.body));
+    return accepted();
+  } });
+  await send({ ...mail, purpose: 'reset' });
+  await assert.rejects(send({ ...mail, purpose: 'verify' }), { message: 'Email delivery failed.' });
+  assertFailureLog(logs, 'CONFIGURATION');
+  assert.deepEqual(requests.map(request => request.template_id), ['template_reset']);
+});
+
 test('EmailJS supplies the complete tokenized action URL for a template button', async () => {
   for (const actionUrl of [
     'https://careerkraft.example/verify-email.html?token=private-test-token&source=email',

@@ -6,8 +6,8 @@ their own Google account. Personal email services suit development and very low
 volume usage; see [EmailJS's guidance](https://www.emailjs.com/docs/user-guide/connecting-email-services/).
 
 The [free plan](https://www.emailjs.com/pricing/) includes **200 requests per
-month and two templates**. CareerKraft uses one template for registration
-verification, resends, password resets and email-change confirmations. Every
+month and two templates**. CareerKraft can share one template for all
+authentication emails, or use a separate password-reset template. Every
 send, including a resend, uses the allowance. Requests stop when the allowance
 is exhausted. EmailJS also limits its
 [send API](https://www.emailjs.com/docs/rest-api/send/) to one request per second.
@@ -20,7 +20,7 @@ from, and grant permission to send email. A separate Gmail account for
 CareerKraft makes its sender address easy to recognize. Save the **Service ID**.
 If the service already exists, use its existing ID.
 
-## 2. Create one shared template
+## 2. Create your email templates
 
 Open **Email Templates**, create a template, and configure these fields exactly:
 
@@ -56,9 +56,23 @@ also handles password resets and account security links.
 Deploy the backend change before using this field in an existing template, then
 request a fresh email. Editing the template does not update emails already sent.
 
-The same template handles every authentication email, so do not hard-code a
-verification-only subject or a fixed recipient address. The HTML file is a
-setup artifact to copy into EmailJS; it is not a website page.
+By default, the same template handles every authentication email, so use
+`{{subject}}` and `{{to_email}}` rather than a verification-only subject or a
+fixed recipient. The HTML file is a setup artifact to copy into EmailJS; it is
+not a website page.
+
+For a separate password-reset design, create a second template with the same
+recipient fields and `{{action_url}}` button URL, then set
+`EMAILJS_RESET_TEMPLATE_ID` to its Template ID. `EMAILJS_TEMPLATE_ID1` is also
+accepted; `EMAILJS_RESET_TEMPLATE_ID` takes precedence if both are set.
+
+| Email | Template setting |
+| --- | --- |
+| Registration, verification resends and email-change confirmations | `EMAILJS_TEMPLATE_ID` |
+| Password resets | `EMAILJS_RESET_TEMPLATE_ID` or `EMAILJS_TEMPLATE_ID1`, falling back to `EMAILJS_TEMPLATE_ID` when neither is set |
+
+The reset button receives a unique `/reset-password.html?token=...` URL. A
+verification resend continues to use the verification template and link.
 
 ## 3. Enable backend requests and copy your keys
 
@@ -82,6 +96,8 @@ other configuration:
 MAIL_MODE=emailjs
 EMAILJS_SERVICE_ID=your_service_id
 EMAILJS_TEMPLATE_ID=your_template_id
+# Optional separate password-reset template (EMAILJS_TEMPLATE_ID1 is an alias):
+EMAILJS_RESET_TEMPLATE_ID=
 EMAILJS_PUBLIC_KEY=your_public_key
 # Optional, unless private-key authorization is enabled in EmailJS:
 EMAILJS_PRIVATE_KEY=
@@ -117,6 +133,8 @@ NODE_ENV=production
 MAIL_MODE=emailjs
 EMAILJS_SERVICE_ID=your_service_id
 EMAILJS_TEMPLATE_ID=your_template_id
+# Set this if you use a separate password-reset template:
+# EMAILJS_RESET_TEMPLATE_ID=your_reset_template_id
 EMAILJS_PUBLIC_KEY=your_public_key
 # Include EMAILJS_PRIVATE_KEY if used in EmailJS.
 APP_URL=https://your-careerkraft-service.onrender.com
