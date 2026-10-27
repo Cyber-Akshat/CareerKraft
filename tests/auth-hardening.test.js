@@ -7,6 +7,7 @@ const password = 'an original test passphrase';
 const legacy = `legacy-test-salt:${scryptSync(password, 'legacy-test-salt', 64).toString('hex')}`;
 const digest = value => createHash('sha256').update(value).digest('hex');
 const settle = () => new Promise(resolve => setImmediate(resolve));
+const accountNotFound = { error: 'An account with this email address does not exist.', code: 'account_not_found' };
 
 async function setup(t, options = {}) {
   const mails = [];
@@ -37,11 +38,11 @@ async function setup(t, options = {}) {
   return { db, mails, request, session };
 }
 
-test('login failure status and body do not reveal account, verification, Google or damaged-hash state', async t => {
+test('login failures keep existing account verification, Google and damaged-hash state private', async t => {
   const { db, request } = await setup(t);
   const expected = { error: 'Unable to sign in with these details.', code: 'invalid_credentials' };
   for (const body of [
-    { email: 'missing@example.com', password }, { email: 'member@example.com', password: 'wrong' },
+    { email: 'member@example.com', password: 'wrong' },
     { email: 'unverified@example.com', password }, { email: 'google@example.com', password },
     { email: 'corrupt@example.com', password }, { email: { $ne: null }, password },
     { email: "' OR 1=1 --@example.com", password }, { email: 'member@example.com', password: ['bad'] }
@@ -53,6 +54,44 @@ test('login failure status and body do not reveal account, verification, Google 
   }
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 4);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
+});
+
+test('login reports normalized unknown accounts without creating an account or authentication state', async t => {
+  const { db, mails, request } = await setup(t);
+  for (const body of [
+    { email: 'missing@example.com', password },
+    { email: '  MISSING@Example.COM  ', password: 'x' },
+    { email: 'missing@example.com', password: 'x'.repeat(128) }
+  ]) {
+    const result = await request('/api/login', body);
+    assert.equal(result.status, 404);
+    assert.deepEqual(result.data, accountNotFound);
+    assert.equal(result.cookie, '');
+    assert.equal(result.headers.get('cache-control'), 'no-store');
+  }
+  await settle();
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 4);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM tokens').get().count, 0);
+  assert.deepEqual(mails, []);
+});
+
+test('missing or malformed login credentials retain generic failures even for an unknown account', async t => {
+  const { request } = await setup(t);
+  const expected = { error: 'Unable to sign in with these details.', code: 'invalid_credentials' };
+  for (const body of [
+    { email: 'missing@example.com' },
+    { email: 'missing@example.com', password: '' },
+    { email: 'missing@example.com', password: ['password'] },
+    { email: 'missing@example.com', password: 'x'.repeat(129) },
+    { email: 'not-an-email', password },
+    { email: { address: 'missing@example.com' }, password }
+  ]) {
+    const result = await request('/api/login', body);
+    assert.equal(result.status, 401);
+    assert.deepEqual(result.data, expected);
+    assert.equal(result.cookie, '');
+  }
 });
 
 test('registration never reveals duplicates or mail transport failures and cannot assign account privileges', async t => {
@@ -78,19 +117,47 @@ test('registration never reveals duplicates or mail transport failures and canno
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM tokens').get().count, 0);
 });
 
-test('registration and recovery respond without waiting for SMTP, with the same recovery body for unknown accounts', async t => {
+test('registration and existing-account recovery respond without waiting for mail while missing accounts get a clear error', async t => {
   const pending = [];
-  const { request } = await setup(t, { sendMail: () => new Promise(resolve => pending.push(resolve)) });
+  const { db, request } = await setup(t, { sendMail: () => new Promise(resolve => pending.push(resolve)) });
   try {
     const registered = await request('/api/register', { email: 'queued@example.com', name: 'Queued member', password: 'a queued mail test passphrase', terms: true });
     assert.equal(registered.status, 202);
     const known = await request('/api/forgot-password', { email: 'member@example.com' });
-    const unknown = await request('/api/forgot-password', { email: 'unknown@example.com' });
+    const unverified = await request('/api/forgot-password', { email: '  UNVERIFIED@Example.COM  ' });
+    const tokenCount = db.prepare('SELECT COUNT(*) AS count FROM tokens').get().count;
+    const unknown = await request('/api/forgot-password', { email: '  UNKNOWN@Example.COM  ' });
     assert.equal(known.status, 200);
-    assert.equal(unknown.status, known.status);
-    assert.deepEqual(unknown.data, known.data);
+    assert.equal(unverified.status, known.status, 'An unverified account exists but is not eligible for reset mail');
+    assert.deepEqual(unverified.data, known.data);
+    assert.equal(unknown.status, 404);
+    assert.deepEqual(unknown.data, accountNotFound);
+    assert.equal(unknown.cookie, '');
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM tokens').get().count, tokenCount);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM tokens WHERE user_id=2').get().count, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 5);
     assert.equal(pending.length, 2);
   } finally { pending.forEach(resolve => resolve()); await settle(); await settle(); }
+});
+
+test('recovery validates email input and verification resends stay neutral for unknown accounts', async t => {
+  const { db, mails, request } = await setup(t, { authSecurityLimits: { emailIP: 10 } });
+  for (const email of ['not-an-email', 'member\u0000@example.com', { address: 'member@example.com' }]) {
+    const invalid = await request('/api/forgot-password', { email });
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(invalid.data, { error: 'Enter a valid email address.' });
+    assert.equal(invalid.cookie, '');
+  }
+  const unknown = await request('/api/resend', { email: 'unknown@example.com' });
+  const verified = await request('/api/resend', { email: 'member@example.com' });
+  assert.equal(unknown.status, 200);
+  assert.deepEqual(unknown.data, verified.data);
+  await settle();
+  assert.deepEqual(mails, []);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM users').get().count, 4);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM tokens').get().count, 0);
 });
 
 test('server rejects bypassed validation, malformed JSON, control characters, oversize data and forged origins', async t => {
@@ -134,8 +201,8 @@ test('queued recovery messages cannot recreate valid reset tokens after email or
 test('dedicated login and register throttles run before password work and reject untrusted forwarded headers', async t => {
   const { request } = await setup(t, { trustProxy: '192.0.2.1', authSecurityLimits: { loginIP: 2, loginAccount: 10, registrationIP: 2 } });
   const login = { email: 'unknown@example.com', password };
-  assert.equal((await request('/api/login', login)).status, 401);
-  assert.equal((await request('/api/login', login)).status, 401);
+  assert.equal((await request('/api/login', login)).status, 404);
+  assert.equal((await request('/api/login', login)).status, 404);
   const limited = await request('/api/login', login, { headers: { 'X-Forwarded-For': '198.51.100.42' } });
   assert.equal(limited.status, 429);
   assert.ok(Number(limited.headers.get('retry-after')) > 0);
@@ -153,12 +220,12 @@ test('one-proxy default uses the nearest forwarded client IP for login throttlin
     const result = await request('/api/login', { email: `unknown-${index}@example.com`, password }, {
       headers: { 'X-Forwarded-For': `198.51.100.${index + 1}, 203.0.113.42` }
     });
-    assert.equal(result.status, index === 2 ? 429 : 401);
+    assert.equal(result.status, index === 2 ? 429 : 404);
   }
   const otherClient = await request('/api/login', { email: 'other-client@example.com', password }, {
     headers: { 'X-Forwarded-For': '203.0.113.43' }
   });
-  assert.equal(otherClient.status, 401);
+  assert.equal(otherClient.status, 404);
 });
 
 test('login upgrades old hashes and rotates an existing cookie while keeping the newly issued session within its cap', async t => {
@@ -167,8 +234,9 @@ test('login upgrades old hashes and rotates an existing cookie while keeping the
   for (let index = 0; index < 12; index += 1) {
     db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(digest(`old-device-${index}`), 1, Date.now() + 7 * 86400000);
   }
-  const loggedIn = await request('/api/login', { email: 'member@example.com', password }, { cookie: oldCookie });
+  const loggedIn = await request('/api/login', { email: '  MEMBER@Example.COM  ', password }, { cookie: oldCookie });
   assert.equal(loggedIn.status, 200);
+  assert.equal(loggedIn.data.user.email, 'member@example.com');
   assert.notEqual(loggedIn.cookie, oldCookie);
   assert.match(loggedIn.headers.get('set-cookie'), /HttpOnly/);
   assert.match(loggedIn.headers.get('set-cookie'), /SameSite=Lax/);

@@ -137,7 +137,7 @@ async function authPage(t, options = {}) {
   w.careerAuth = {
     getSession: async () => ({ data: { session: null } }),
     signUp: async body => { calls.push({ endpoint: 'register', body }); return options.signUp ? options.signUp(body) : { data: { success: true, session: null, message: 'If this address can be used, an email with the next steps will arrive shortly.' } }; },
-    signInWithPassword: async body => { calls.push({ endpoint: 'login', body }); return { error: { message: 'Unable to sign in with these details.', code: 'invalid_credentials' } }; },
+    signInWithPassword: async body => { calls.push({ endpoint: 'login', body }); return options.login ? options.login(body) : { error: { message: 'Unable to sign in with these details.', code: 'invalid_credentials' } }; },
     resetPasswordForEmail: async email => { calls.push({ endpoint: 'forgot-password', email }); return options.forgot ? options.forgot(email) : { data: { success: true, message: 'If this address is eligible, an email with the next steps will arrive shortly.' } }; },
     signInWithOAuth: options.oauth || (async () => ({ data: {}, error: null }))
   };
@@ -193,6 +193,91 @@ test('legacy short login passwords still reach the API and invalid credentials s
   assert.deepEqual(verification, []);
   assert.deepEqual(logs, []);
   assert.equal(d.getElementById('login-password').hasAttribute('minlength'), false);
+});
+
+test('an explicit missing-account sign-in response opens registration with the submitted email and cleared passwords', async t => {
+  let finishLogin;
+  const { w, d, calls, verification, logs } = await authPage(t, { login: () => new Promise(resolve => { finishLogin = resolve; }) });
+  const loginButton = d.getElementById('login-button');
+  const originalText = loginButton.querySelector('span').textContent;
+  d.getElementById('login-email').value = '  Missing.Person@EXAMPLE.COM  ';
+  d.getElementById('login-password').value = 'submitted-login-password';
+  d.getElementById('register-email').value = 'previous@example.com';
+  d.getElementById('register-password').value = 'previous-registration-password';
+  d.getElementById('confirm-password').value = 'previous-registration-password';
+  d.getElementById('login-form').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  assert.equal(loginButton.disabled, true);
+  assert.equal(loginButton.querySelector('span').textContent, 'Signing in...');
+  finishLogin({ error: { message: 'An account with this email address does not exist.', code: 'account_not_found' } });
+  await settle();
+  assert.equal(d.getElementById('register-form').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('login-form').classList.contains('hidden'), true);
+  assert.equal(d.title, 'Create an account | CareerKraft');
+  assert.equal(d.getElementById('register-email').value, 'missing.person@example.com');
+  assert.match(d.getElementById('register-message').textContent, /does not exist.*Create your account/);
+  assert.equal(d.getElementById('register-message').classList.contains('error'), true);
+  assert.equal(d.activeElement.id, 'register-name');
+  for (const id of ['login-password', 'register-password', 'confirm-password']) assert.equal(d.getElementById(id).value, '');
+  assert.equal(loginButton.disabled, false);
+  assert.equal(loginButton.querySelector('span').textContent, originalText);
+  assert.equal(calls.length, 1, 'Switching forms makes no extra account lookup or registration request');
+  assert.equal(calls[0].endpoint, 'login');
+  assert.equal(calls[0].body.email, 'missing.person@example.com');
+  assert.equal(calls[0].body.password, 'submitted-login-password');
+  assert.deepEqual(verification, []);
+  assert.deepEqual(logs, []);
+});
+
+test('incorrect credentials, connection failures and rate limits keep sign-in open without guessing account existence', async t => {
+  for (const error of [
+    { message: 'Unable to sign in with these details.', code: 'invalid_credentials' },
+    { message: 'Unable to connect. Please try again.' },
+    { message: 'Too many requests. Try again later.' },
+    { message: 'An account with this email address does not exist.' }
+  ]) {
+    const { w, d, calls } = await authPage(t, { login: async () => ({ error }) });
+    const originalText = d.getElementById('login-button').querySelector('span').textContent;
+    d.getElementById('login-email').value = 'tester@example.com';
+    d.getElementById('login-password').value = 'incorrect-password';
+    d.getElementById('login-form').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    assert.equal(d.getElementById('register-form').classList.contains('hidden'), true);
+    assert.equal(d.getElementById('login-form').classList.contains('hidden'), false);
+    assert.equal(d.getElementById('login-message').textContent, error.message);
+    assert.equal(d.getElementById('register-message').textContent, '');
+    assert.equal(d.getElementById('register-email').value, '');
+    assert.equal(d.getElementById('login-button').disabled, false);
+    assert.equal(d.getElementById('login-button').querySelector('span').textContent, originalText);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].endpoint, 'login');
+  }
+});
+
+test('forgot-password displays a missing-account error without switching forms and restores its request control', async t => {
+  let finishReset;
+  const { d, calls, logs } = await authPage(t, { forgot: () => new Promise(resolve => { finishReset = resolve; }) });
+  const button = d.getElementById('forgot-password');
+  const originalText = button.textContent;
+  d.getElementById('login-email').value = 'missing@example.com';
+  button.click();
+  await settle();
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  assert.equal(button.getAttribute('aria-busy'), 'true');
+  finishReset({ error: { message: 'An account with this email address does not exist.', code: 'account_not_found' } });
+  await settle();
+  assert.equal(d.getElementById('login-message').textContent, 'An account with this email address does not exist.');
+  assert.equal(d.getElementById('login-message').classList.contains('error'), true);
+  assert.equal(d.getElementById('login-form').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('register-form').classList.contains('hidden'), true);
+  assert.equal(button.hasAttribute('aria-disabled'), false);
+  assert.equal(button.hasAttribute('aria-busy'), false);
+  assert.equal(button.disabled, false);
+  assert.equal(button.textContent, originalText);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].endpoint, 'forgot-password');
+  assert.equal(calls[0].email, 'missing@example.com');
+  assert.deepEqual(logs, []);
 });
 
 test('forgot-password shows neutral eligibility text and preserves server rate-limit feedback', async t => {

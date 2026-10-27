@@ -232,13 +232,21 @@ bounded. Limit responses are generic JSON with Retry-After. The existing general
 API limit also applies. Authentication limits and sessions share the configured
 MySQL database across app instances; the general API limit remains per process.
 
-Login failures use the same status, message and code for incorrect, missing,
-unverified, Google-only and damaged-password accounts. Valid registration
-requests return the same neutral 202 response for new or existing addresses and
-for mail-delivery failure. Recovery responses are also neutral. Email delivery
-runs in a bounded background queue so provider latency cannot determine the public
-response. Delivery failures are logged without addresses, passwords or tokens;
-users can request another email later.
+Sign-in attempts with a valid email and password format return 404 with
+`account_not_found` when the email has no account. The sign-in form opens sign-up
+with that email filled in; account creation still requires completing the form.
+Incorrect passwords, unverified accounts, Google-only accounts and damaged
+password records retain the same generic 401 response. Password-reset requests
+also return `account_not_found` for unregistered addresses; existing accounts
+receive a neutral response, with reset emails sent only for verified accounts.
+These two flows intentionally distinguish unknown email addresses, while their
+existing account/IP rate limits continue to apply.
+
+Valid registration requests return the same neutral 202 response for new or
+existing addresses and for mail-delivery failure. Verification resends also
+remain neutral. Email delivery runs in a bounded background queue so provider
+latency cannot determine the public response. Delivery failures are logged
+without addresses, passwords or tokens; users can request another email later.
 
 Sessions use random 256-bit secrets, store only their hashes, expire after
 30 minutes of inactivity and have a 24-hour absolute lifetime by default. Set

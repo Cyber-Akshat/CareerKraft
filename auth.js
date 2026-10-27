@@ -675,11 +675,21 @@ loginForm.addEventListener(
 
       if (error) {
 
-        showMessage(
-          loginMessage,
-          error.message,
-          "error"
-        );
+        if (error.code === "account_not_found") {
+          showRegister();
+          document.querySelector("#register-email").value = email;
+          document.querySelectorAll("#login-password, #register-password, #confirm-password").forEach(input => {
+            input.value = "";
+          });
+          showMessage(registerMessage, "An account with this email address does not exist. Create your account below.", "error");
+          document.querySelector("#register-name").focus();
+        } else {
+          showMessage(
+            loginMessage,
+            error.message,
+            "error"
+          );
+        }
 
 
         button.disabled =

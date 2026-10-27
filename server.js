@@ -15,7 +15,7 @@ const { mkdirSync, writeFileSync, unlinkSync, existsSync } = require('node:fs');
 const path = require('node:path');
 const { createBrevoMailer, createEmailJSMailer } = require('./email-delivery');
 const { installAccountSettings, preferencesFor } = require('./account-settings-server');
-const { hashPassword, verifyPassword, validateNewPassword, PASSWORD_POLICY_MESSAGE } = require('./password-security');
+const { hashPassword, verifyPassword, validateNewPassword, PASSWORD_MAX_LENGTH, PASSWORD_POLICY_MESSAGE } = require('./password-security');
 const { createAuthSecurity } = require('./auth-security');
 const token = () => randomBytes(32).toString('hex');
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -903,6 +903,9 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   const registrationMessage = 'If this address can be used, an email with the next steps will arrive shortly.';
   const emailMessage = 'If this address is eligible, an email with the next steps will arrive shortly.';
   const invalidCredentials = res => res.status(401).json({ error: 'Unable to sign in with these details.', code: 'invalid_credentials' });
+  const accountNotFound = res => res.status(404).json({
+    error: 'An account with this email address does not exist.', code: 'account_not_found'
+  });
   app.post('/api/register', authSecurity.registrationLimit, async (req, res) => {
     const { name, password, terms } = req.body;
     const email = normalizeEmail(req.body.email);
@@ -920,6 +923,8 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     const email = normalizeEmail(req.body.email);
     const user = validEmail(email) ? (await db.prepare('SELECT * FROM users WHERE email=?').get(email)) : null;
     const verification = await verifyPassword(password, user?.password);
+    if (!user && validEmail(email) && typeof password === 'string' &&
+        password.length >= 1 && password.length <= PASSWORD_MAX_LENGTH) return accountNotFound(res);
     if (!verification.valid || !user?.verified) return invalidCredentials(res);
     const replacement = verification.needsRehash ? await hashPassword(password) : null;
     let current;
@@ -3066,8 +3071,9 @@ app.post('/api/early-access', async (req, res) => {
   app.post('/api/forgot-password', emailLimit, async (req, res) => {
     const email = normalizeEmail(req.body.email);
     if (!validEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
-    const user = (await db.prepare('SELECT * FROM users WHERE email=? AND verified=1').get(email));
-    if (user) queueEmail(user, 'reset');
+    const user = (await db.prepare('SELECT * FROM users WHERE email=?').get(email));
+    if (!user) return accountNotFound(res);
+    if (user.verified) queueEmail(user, 'reset');
     res.json({ success: true, message: emailMessage });
   });
   app.post('/api/reset-password', authSecurity.tokenLimit, async (req, res) => {
