@@ -1,5 +1,175 @@
 // Small enhancements shared by every page.
 (() => {
+  if (window.careerLoading) return;
+
+  const sources = new Map();
+  const revealDelay = 180;
+  const minimumVisible = 360;
+  const hideDelay = 120;
+  let indicator;
+  let labelElement;
+  let showTimer;
+  let hideTimer;
+  let visibleSince = 0;
+  let suspended = false;
+  let apiSource;
+  let pageSource;
+
+  const clearTimers = () => {
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    showTimer = undefined;
+    hideTimer = undefined;
+  };
+
+  const createIndicator = () => {
+    if (indicator || !document.body) return;
+    indicator = document.createElement('div');
+    indicator.className = 'career-loading';
+    indicator.hidden = true;
+    indicator.setAttribute('role', 'status');
+    indicator.setAttribute('aria-live', 'polite');
+    indicator.setAttribute('aria-atomic', 'true');
+    indicator.innerHTML = `
+      <span class="career-loading-mark" aria-hidden="true">
+        <span class="career-loading-orbit"></span>
+        <img src="/assets/logo.png" alt="" width="30" height="30">
+      </span>
+      <span class="career-loading-copy">
+        <span class="career-loading-brand">CareerKraft</span>
+        <span class="career-loading-label"></span>
+      </span>`;
+    labelElement = indicator.querySelector('.career-loading-label');
+    document.body.append(indicator);
+  };
+
+  const currentLabel = () => [...sources.values()].at(-1) || 'Loading…';
+  // Native modal dialogs occupy the browser's top layer. Keep the status in
+  // that same layer while their requests run, without changing keyboard focus.
+  const mountIndicator = () => {
+    if (!indicator || !document.body) return;
+    let modal;
+    try {
+      modal = document.activeElement?.closest('dialog:modal') || [...document.querySelectorAll('dialog:modal')].at(-1);
+    } catch {
+      modal = [...document.querySelectorAll('dialog[open]')].at(-1);
+    }
+    const parent = modal || document.body;
+    if (indicator.parentElement !== parent) parent.append(indicator);
+  };
+  const updateLabel = () => {
+    const label = currentLabel();
+    if (labelElement.textContent !== label) labelElement.textContent = label;
+  };
+
+  const update = () => {
+    if (suspended) return;
+    createIndicator();
+    if (!indicator) return;
+    mountIndicator();
+
+    if (sources.size) {
+      clearTimeout(hideTimer);
+      hideTimer = undefined;
+      if (!indicator.hidden) {
+        updateLabel();
+      } else if (showTimer === undefined) {
+        showTimer = setTimeout(() => {
+          showTimer = undefined;
+          if (suspended || !sources.size) return;
+          updateLabel();
+          indicator.hidden = false;
+          visibleSince = Date.now();
+        }, revealDelay);
+      }
+    } else {
+      clearTimeout(showTimer);
+      showTimer = undefined;
+      if (!indicator.hidden && hideTimer === undefined) {
+        hideTimer = setTimeout(() => {
+          hideTimer = undefined;
+          if (sources.size || suspended) return;
+          indicator.hidden = true;
+          labelElement.textContent = '';
+          visibleSince = 0;
+        }, Math.max(hideDelay, minimumVisible - (Date.now() - visibleSince)));
+      }
+    }
+  };
+
+  const start = label => {
+    const id = Symbol('loading');
+    const text = typeof label === 'string' ? label.trim().slice(0, 120) : '';
+    sources.set(id, text || 'Loading…');
+    update();
+    return {
+      id,
+      finish() {
+        if (!sources.delete(id)) return;
+        update();
+      }
+    };
+  };
+
+  window.careerLoading = Object.freeze({
+    begin(label = 'Loading…') { return start(label).finish; }
+  });
+
+  const syncRequests = () => {
+    if (suspended) return;
+    const pending = window.careerAuth?.pendingRequests;
+    if (pending?.size) {
+      const label = [...pending.values()].at(-1);
+      if (!apiSource) apiSource = start(label);
+      else {
+        sources.set(apiSource.id, typeof label === 'string' ? label : 'Loading…');
+        update();
+      }
+    } else if (apiSource) {
+      apiSource.finish();
+      apiSource = undefined;
+    }
+  };
+
+  const finishPageLoad = () => {
+    pageSource?.finish();
+    pageSource = undefined;
+  };
+  const syncPage = () => {
+    if (suspended) return;
+    if (document.readyState !== 'complete' && !pageSource) pageSource = start('Loading page…');
+    else if (document.readyState === 'complete') finishPageLoad();
+    syncRequests();
+    update();
+  };
+
+  document.addEventListener('career:loading-change', syncRequests);
+  new MutationObserver(records => {
+    if (records.some(record => record.target.tagName === 'DIALOG')) mountIndicator();
+  }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['open'] });
+  document.addEventListener('close', mountIndicator, true);
+  document.addEventListener('DOMContentLoaded', syncPage, { once: true });
+  window.addEventListener('load', finishPageLoad, { once: true });
+  window.addEventListener('pagehide', () => {
+    suspended = true;
+    clearTimers();
+    sources.clear();
+    apiSource = undefined;
+    pageSource = undefined;
+    visibleSince = 0;
+    if (indicator) {
+      indicator.hidden = true;
+      labelElement.textContent = '';
+    }
+  });
+  window.addEventListener('pageshow', () => {
+    suspended = false;
+    syncPage();
+  });
+  syncPage();
+})();
+
+(() => {
   const consentKey = 'careerkraft-cookie-consent';
   const consentLifetime = 180 * 24 * 60 * 60 * 1000;
   const validConsent = record => record?.version === 1 &&

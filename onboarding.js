@@ -1715,31 +1715,34 @@ window.addEventListener('pagehide', () => {
   finishQuizSound?.();
 });
 async function startAnalysis() {
-  setOnboardingMessage('');
-  const fallbackMatches = calculateCareerMatches();
-  analysisRows.forEach(row => row.classList.remove('active'));
-  analysisRows[0]?.classList.add('active');
-  showScreen(5);
-  const soundFinished = playLumiaQuizSound();
-  const analysisPromise = saveAssessment(fallbackMatches).catch(error => ({ saveError: error }));
-  await delay(650);
-  analysisRows[1]?.classList.add('active');
-  await delay(650);
-  analysisRows[2]?.classList.add('active');
-  await delay(750);
-  const result = await analysisPromise;
-  await soundFinished;
-  lumiaQuizSound?.pause();
-  if (!result || result.saveError) {
-    showScreen(4);
-    setOnboardingMessage(result?.saveError?.message || "We couldn't save your answers. Your choices are still here; try finding your careers again.");
-    return;
+  const finishLoading = window.careerLoading?.begin?.('Finding your career matches…');
+  try {
+    setOnboardingMessage('');
+    const fallbackMatches = calculateCareerMatches();
+    analysisRows.forEach(row => row.classList.remove('active'));
+    analysisRows[0]?.classList.add('active');
+    showScreen(5);
+    const soundFinished = playLumiaQuizSound();
+    const analysisPromise = saveAssessment(fallbackMatches).catch(error => ({ saveError: error }));
+    await delay(650);
+    analysisRows[1]?.classList.add('active');
+    await delay(650);
+    analysisRows[2]?.classList.add('active');
+    await delay(750);
+    const result = await analysisPromise;
+    await soundFinished;
+    lumiaQuizSound?.pause();
+    if (!result || result.saveError) {
+      showScreen(4);
+      setOnboardingMessage(result?.saveError?.message || "We couldn't save your answers. Your choices are still here; try finding your careers again.");
+      return;
+    }
+    const matches = Array.isArray(result.matches) ? result.matches : fallbackMatches;
+    renderCareerResults(matches);
+    showScreen(6);
+  } finally {
+    finishLoading?.();
   }
-  const matches = Array.isArray(result.matches) ? result.matches : fallbackMatches;
-  renderCareerResults(matches);
-
-
-  showScreen(6);
 }
 
 

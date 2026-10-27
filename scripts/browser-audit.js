@@ -13,6 +13,7 @@ const root = path.join(__dirname, '..');
 const accessibilityOnly = process.env.BROWSER_AUDIT_SCOPE === 'accessibility';
 const tourOnly = process.env.BROWSER_AUDIT_SCOPE === 'tour';
 const cookiesOnly = process.env.BROWSER_AUDIT_SCOPE === 'cookies';
+const loadingOnly = process.env.BROWSER_AUDIT_SCOPE === 'loading';
 const artifacts = process.env.BROWSER_ARTIFACTS ? path.resolve(process.env.BROWSER_ARTIFACTS) : null;
 if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
 const chrome = [process.env.BROWSER_PATH,
@@ -141,7 +142,7 @@ async function run() {
       assert.deepEqual(cdp.errors, [], `${label}: browser script errors`);
       process.stdout.write(`PASS ${label}\n`);
     };
-    const pages = fs.readdirSync(root).filter(file => file.endsWith('.html'));
+    const pages = fs.readdirSync(root).filter(file => file.endsWith('.html') && file !== 'dd8adc22-d472-4bce-94ad-d465f4689348.html');
     let count = 0;
     const waitFor = async (expression, message) => {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -260,6 +261,119 @@ async function run() {
         assert.equal(await evaluate('document.activeElement.id'), 'dashboard-tour-launch');
       }
     };
+    if (loadingOnly) {
+      await cdp.send('Page.navigate', { url: base + '/index.html' });
+      await waitFor('Boolean(window.careerAccessibility)', 'Accessibility preferences are ready for loading checks');
+      await evaluate(`window.careerAccessibility.apply(window.careerAccessibility.defaults);
+        localStorage.setItem('careerkraft-reduced-motion', 'false');
+        localStorage.setItem('careerkraft-cookie-consent', JSON.stringify({ version: 1, choice: 'accepted', savedAt: Date.now() }))`);
+      for (const width of [320, 1440]) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 });
+        for (const theme of ['light', 'dark']) {
+          await evaluate(`localStorage.setItem('careerkraft-theme', '${theme}')`);
+          for (const page of ['dashboard.html', 'activity.html', 'career.html', 'settings.html']) {
+            cdp.errors.length = 0;
+            const query = page === 'activity.html' ? '&step=24' : page === 'career.html' ? '&career=software-developer' : '';
+            await cdp.send('Page.navigate', { url: `${base}/${page}?audit=loading${query}` });
+            await waitFor(`(() => {
+              const loading = document.querySelector('.career-loading');
+              const logo = loading?.querySelector('img');
+              return loading && !loading.hidden && logo.complete && logo.naturalWidth > 0;
+            })()`, `${page}: shared loading animation and brand image are visible`);
+            const state = await evaluate(`(() => {
+              const loading = document.querySelector('.career-loading');
+              const rect = loading.getBoundingClientRect();
+              return { role: loading.getAttribute('role'), live: loading.getAttribute('aria-live'),
+                pointerEvents: getComputedStyle(loading).pointerEvents,
+                theme: document.documentElement.dataset.theme,
+                orbitAnimation: getComputedStyle(loading.querySelector('.career-loading-orbit')).animationName,
+                imageSource: loading.querySelector('img').getAttribute('src'),
+                imageAlt: loading.querySelector('img').alt,
+                rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+                viewport: { width: document.documentElement.clientWidth, height: innerHeight } };
+            })()`);
+            assert.equal(state.role, 'status');
+            assert.equal(state.live, 'polite');
+            assert.equal(state.pointerEvents, 'none');
+            assert.equal(state.theme, theme);
+            assert.equal(state.imageSource, '/assets/logo.png');
+            assert.equal(state.imageAlt, '');
+            assert.equal(state.orbitAnimation, 'career-loading-orbit');
+            assert.ok(state.rect.left >= 0 && state.rect.top >= 0 && state.rect.right <= state.viewport.width && state.rect.bottom <= state.viewport.height,
+              `${page}: loading status stays inside the viewport: ${JSON.stringify(state)}`);
+            await measure(`${page} branded loading in ${theme} at ${width}px`, width);
+            count++;
+            if (page === 'dashboard.html' && artifacts) {
+              const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+              fs.writeFileSync(path.join(artifacts, `loading-dashboard-${theme}-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+            }
+            await evaluate('document.documentElement.dataset.reducedMotion = "true"');
+            assert.deepEqual(await evaluate(`['.career-loading-orbit', '.career-loading-mark img'].map(selector => getComputedStyle(document.querySelector(selector)).animationName)`),
+              ['none', 'none'], `${page}: saved reduced motion keeps the brand static`);
+            await evaluate('document.documentElement.dataset.reducedMotion = "false"');
+            await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+            assert.deepEqual(await evaluate(`['.career-loading-orbit', '.career-loading-mark img'].map(selector => getComputedStyle(document.querySelector(selector)).animationName)`),
+              ['none', 'none'], `${page}: system reduced motion keeps the brand static`);
+            await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+            assert.equal(await evaluate('getComputedStyle(document.querySelector(".career-loading-orbit")).animationName'), 'career-loading-orbit');
+            await evaluate('window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }))');
+            assert.equal(await evaluate('document.querySelector(".career-loading").hidden'), true, 'Page hide clears the loading card');
+            await evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }))');
+            await waitFor('document.querySelector(".career-loading")?.hidden === false', 'Page restore resynchronizes pending loading requests');
+            assert.equal(await evaluate('document.querySelectorAll(".career-loading").length'), 1, 'Page restore retains one status indicator');
+          }
+        }
+      }
+      for (const width of [320, 1440]) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 });
+        await cdp.send('Page.navigate', { url: base + '/settings.html' });
+        await waitFor('document.getElementById("settings-content")?.disabled === false && Boolean(window.careerLoading)', 'Account settings are ready for modal loading checks');
+        await waitFor('document.querySelector(".career-loading")?.hidden === true', 'Initial account loading is complete');
+        for (const dialogId of ['character-dialog', 'delete-dialog']) {
+          await evaluate(`(() => {
+            const dialog = document.getElementById('${dialogId}');
+            if ('${dialogId}' === 'delete-dialog') window.__finishModalLoading = window.careerLoading.begin('Saving your changes…');
+            dialog.showModal();
+            window.__modalLoadingFocus = document.activeElement;
+            if ('${dialogId}' === 'character-dialog') window.__finishModalLoading = window.careerLoading.begin('Saving your changes…');
+          })()`);
+          await waitFor(`(() => {
+            const loading = document.querySelector('.career-loading');
+            return loading && !loading.hidden && loading.parentElement.id === '${dialogId}';
+          })()`, 'Loading status joins the active native modal');
+          const modalState = await evaluate(`(() => {
+            const loading = document.querySelector('.career-loading');
+            const rect = loading.getBoundingClientRect();
+            loading.style.pointerEvents = 'auto';
+            const visibleAtCenter = loading.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+            loading.style.removeProperty('pointer-events');
+            return { visibleAtCenter, focusUnchanged: document.activeElement === window.__modalLoadingFocus,
+              modal: loading.parentElement.matches(':modal'), pointerEvents: getComputedStyle(loading).pointerEvents };
+          })()`);
+          assert.deepEqual(modalState, { visibleAtCenter: true, focusUnchanged: true, modal: true, pointerEvents: 'none' }, 'Native dialogs keep the status visible without moving focus');
+          await measure(`${dialogId} branded loading at ${width}px`, width);
+          count++;
+          if (artifacts) {
+            const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+            fs.writeFileSync(path.join(artifacts, `loading-${dialogId}-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+          }
+          if (dialogId === 'character-dialog') {
+            await evaluate('window.__finishModalLoading()');
+            await waitFor('document.querySelector(".career-loading").hidden', 'Completed modal work hides the loading status');
+            await evaluate(`document.getElementById('${dialogId}').close()`);
+          } else {
+            await evaluate(`document.getElementById('${dialogId}').close()`);
+            await waitFor('document.querySelector(".career-loading").parentElement === document.body', 'Closing the modal restores the pending status to the page');
+            assert.equal(await evaluate('document.querySelector(".career-loading").hidden'), false);
+            await evaluate('window.__finishModalLoading()');
+            await waitFor('document.querySelector(".career-loading").hidden', 'Completed work hides the restored page status');
+          }
+          await waitFor('document.querySelector(".career-loading").parentElement === document.body', 'The closed modal returns its loading indicator to the page');
+        }
+      }
+      process.stdout.write(`Verified ${count} branded loading layouts, logo delivery, nonblocking status, reduced motion, modal visibility and page lifecycle cleanup.\n`);
+      return;
+    }
     if (cookiesOnly) {
       await auditAccountCookies();
       process.stdout.write(`Verified ${count} account cookie layouts, banner sync and dashboard persistence.\n`);

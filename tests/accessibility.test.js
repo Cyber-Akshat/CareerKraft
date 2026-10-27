@@ -154,7 +154,9 @@ test('text added later and newly loaded stylesheets receive the current text siz
 });
 
 test('every page loads accessibility before styles and other application scripts', t => {
-  const filenames = readdirSync(root).filter(filename => filename.endsWith('.html'));
+  // Trustpilot's verification payload must stay separate from application UI.
+  const filenames = readdirSync(root).filter(filename => filename.endsWith('.html') &&
+    filename !== 'dd8adc22-d472-4bce-94ad-d465f4689348.html');
   assert.equal(filenames.length, 13);
   for (const filename of filenames) {
     const dom = new JSDOM(readFileSync(path.join(root, filename), 'utf8'));

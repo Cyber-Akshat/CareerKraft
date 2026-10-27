@@ -401,7 +401,9 @@ test('unsupported programmatic cookie choices cannot alter the saved or visible 
 });
 
 test('every page receives one cookie notice and a working footer settings control from the shared script', t => {
-  const filenames = readdirSync(root).filter(filename => filename.endsWith('.html'));
+  // Trustpilot's verification payload must stay separate from application UI.
+  const filenames = readdirSync(root).filter(filename => filename.endsWith('.html') &&
+    filename !== 'dd8adc22-d472-4bce-94ad-d465f4689348.html');
   assert.ok(filenames.includes('dashboard.html'));
   for (const filename of filenames) {
     const html = readFileSync(path.join(root, filename), 'utf8');

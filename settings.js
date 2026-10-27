@@ -272,6 +272,17 @@
     }, "Saving…");
   });
 
+  function openGoogle(url) {
+    const finishLoading = window.careerLoading?.begin?.("Opening Google…");
+    try {
+      window.location.assign(url);
+      if (finishLoading) window.setTimeout(finishLoading, 30000);
+    } catch (error) {
+      finishLoading?.();
+      throw error;
+    }
+  }
+
   byId("google-link-editor").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -281,10 +292,10 @@
       applyResult(result);
       byId("link-password").value = "";
       if (result.url !== "/api/google?intent=link") throw new Error("We couldn't start your Google connection. Please try again.");
-      window.location.assign(result.url);
+      openGoogle(result.url);
     }, "Connecting…");
   });
-  byId("verify-google").addEventListener("click", () => window.location.assign("/api/google?intent=reauth"));
+  byId("verify-google").addEventListener("click", () => openGoogle("/api/google?intent=reauth"));
   byId("google-unlink-editor").addEventListener("submit", event => {
     event.preventDefault();
     const form = event.currentTarget;
