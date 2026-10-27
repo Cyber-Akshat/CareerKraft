@@ -262,6 +262,9 @@ async function run() {
       }
     };
     if (loadingOnly) {
+      const loadingAsset = await fetch(base + '/ripples.svg');
+      assert.equal(loadingAsset.status, 200, 'The original loading SVG is publicly served');
+      assert.match(await loadingAsset.text(), /<animate\b/, 'The delivered loading SVG retains its own animation');
       await cdp.send('Page.navigate', { url: base + '/index.html' });
       await waitFor('Boolean(window.careerAccessibility)', 'Accessibility preferences are ready for loading checks');
       await evaluate(`window.careerAccessibility.apply(window.careerAccessibility.defaults);
@@ -279,14 +282,16 @@ async function run() {
               const loading = document.querySelector('.career-loading');
               const logo = loading?.querySelector('img');
               return loading && !loading.hidden && logo.complete && logo.naturalWidth > 0;
-            })()`, `${page}: shared loading animation and brand image are visible`);
+            })()`, `${page}: shared loading animation and ripple image are visible`);
             const state = await evaluate(`(() => {
               const loading = document.querySelector('.career-loading');
               const rect = loading.getBoundingClientRect();
               return { role: loading.getAttribute('role'), live: loading.getAttribute('aria-live'),
                 pointerEvents: getComputedStyle(loading).pointerEvents,
                 theme: document.documentElement.dataset.theme,
-                orbitAnimation: getComputedStyle(loading.querySelector('.career-loading-orbit')).animationName,
+                imageAnimation: getComputedStyle(loading.querySelector('img')).animationName,
+                imageVisible: getComputedStyle(loading.querySelector('img')).display !== 'none',
+                fallbackVisible: getComputedStyle(loading.querySelector('.career-loading-static')).display !== 'none',
                 imageSource: loading.querySelector('img').getAttribute('src'),
                 imageAlt: loading.querySelector('img').alt,
                 rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
@@ -296,26 +301,42 @@ async function run() {
             assert.equal(state.live, 'polite');
             assert.equal(state.pointerEvents, 'none');
             assert.equal(state.theme, theme);
-            assert.equal(state.imageSource, '/assets/logo.png');
+            assert.equal(state.imageSource, '/ripples.svg');
             assert.equal(state.imageAlt, '');
-            assert.equal(state.orbitAnimation, 'career-loading-orbit');
+            assert.equal(state.imageAnimation, 'none', 'The supplied SVG runs its own animation');
+            assert.equal(state.imageVisible, true);
+            assert.equal(state.fallbackVisible, false);
             assert.ok(state.rect.left >= 0 && state.rect.top >= 0 && state.rect.right <= state.viewport.width && state.rect.bottom <= state.viewport.height,
               `${page}: loading status stays inside the viewport: ${JSON.stringify(state)}`);
             await measure(`${page} branded loading in ${theme} at ${width}px`, width);
             count++;
+            if (page === 'dashboard.html' && width === 320 && theme === 'light') {
+              const clip = await evaluate(`(() => {
+                const rect = document.querySelector('.career-loading-mark').getBoundingClientRect();
+                return { x: rect.left, y: rect.top, width: rect.width, height: rect.height, scale: 1 };
+              })()`);
+              const first = await cdp.send('Page.captureScreenshot', { format: 'png', clip });
+              await pause(300);
+              const second = await cdp.send('Page.captureScreenshot', { format: 'png', clip });
+              assert.notEqual(first.data, second.data, 'The supplied SVG visibly animates between rendered frames');
+              if (artifacts) {
+                fs.writeFileSync(path.join(artifacts, 'loading-ripples-frame-1.png'), Buffer.from(first.data, 'base64'));
+                fs.writeFileSync(path.join(artifacts, 'loading-ripples-frame-2.png'), Buffer.from(second.data, 'base64'));
+              }
+            }
             if (page === 'dashboard.html' && artifacts) {
               const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
               fs.writeFileSync(path.join(artifacts, `loading-dashboard-${theme}-${width}.png`), Buffer.from(screenshot.data, 'base64'));
             }
             await evaluate('document.documentElement.dataset.reducedMotion = "true"');
-            assert.deepEqual(await evaluate(`['.career-loading-orbit', '.career-loading-mark img'].map(selector => getComputedStyle(document.querySelector(selector)).animationName)`),
-              ['none', 'none'], `${page}: saved reduced motion keeps the brand static`);
+            assert.deepEqual(await evaluate(`['.career-loading-mark img', '.career-loading-static'].map(selector => getComputedStyle(document.querySelector(selector)).display !== 'none')`),
+              [false, true], `${page}: saved reduced motion replaces the animated SVG with a static mark`);
             await evaluate('document.documentElement.dataset.reducedMotion = "false"');
             await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
-            assert.deepEqual(await evaluate(`['.career-loading-orbit', '.career-loading-mark img'].map(selector => getComputedStyle(document.querySelector(selector)).animationName)`),
-              ['none', 'none'], `${page}: system reduced motion keeps the brand static`);
+            assert.deepEqual(await evaluate(`['.career-loading-mark img', '.career-loading-static'].map(selector => getComputedStyle(document.querySelector(selector)).display !== 'none')`),
+              [false, true], `${page}: system reduced motion replaces the animated SVG with a static mark`);
             await cdp.send('Emulation.setEmulatedMedia', { features: [] });
-            assert.equal(await evaluate('getComputedStyle(document.querySelector(".career-loading-orbit")).animationName'), 'career-loading-orbit');
+            assert.deepEqual(await evaluate(`['.career-loading-mark img', '.career-loading-static'].map(selector => getComputedStyle(document.querySelector(selector)).display !== 'none')`), [true, false]);
             await evaluate('window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }))');
             assert.equal(await evaluate('document.querySelector(".career-loading").hidden'), true, 'Page hide clears the loading card');
             await evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }))');
@@ -371,7 +392,7 @@ async function run() {
           await waitFor('document.querySelector(".career-loading").parentElement === document.body', 'The closed modal returns its loading indicator to the page');
         }
       }
-      process.stdout.write(`Verified ${count} branded loading layouts, logo delivery, nonblocking status, reduced motion, modal visibility and page lifecycle cleanup.\n`);
+      process.stdout.write(`Verified ${count} loading layouts, original animated SVG delivery, nonblocking status, reduced motion, modal visibility and page lifecycle cleanup.\n`);
       return;
     }
     if (cookiesOnly) {

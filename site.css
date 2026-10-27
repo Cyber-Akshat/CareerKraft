@@ -52,9 +52,9 @@ dialog { max-inline-size: calc(100% - 24px); max-block-size: calc(100dvh - 24px)
 }
 .career-loading[hidden] { display: none !important; }
 .career-loading-mark { position: relative; display: grid; flex: 0 0 46px; width: 46px; height: 46px; place-items: center; }
-.career-loading-mark img { display: block; width: 30px; height: 30px; object-fit: contain; animation: career-loading-pulse 1.8s ease-in-out infinite; }
-.career-loading-orbit { position: absolute; inset: 0; border: 2px solid #a780d52e; border-top-color: var(--loading-accent); border-right-color: var(--loading-accent); border-radius: 50%; animation: career-loading-orbit 1.1s linear infinite; }
-.career-loading-orbit::after { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--loading-accent); content: ""; }
+.career-loading-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.career-loading-static { display: none; position: relative; width: 30px; height: 30px; border: 2px solid var(--loading-accent); border-radius: 50%; }
+.career-loading-static::after { position: absolute; inset: 6px; border: 1px solid var(--loading-accent); border-radius: 50%; content: ""; }
 .career-loading-copy { display: grid; min-width: 0; gap: 1px; }
 .career-loading-brand { color: var(--loading-text); font-size: 13px; font-weight: 750; letter-spacing: -.01em; }
 .career-loading-label { color: var(--loading-muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -66,18 +66,16 @@ dialog { max-inline-size: calc(100% - 24px); max-block-size: calc(100dvh - 24px)
   --loading-accent: #c6a0f1;
   box-shadow: 0 8px 32px #0005, inset 0 1px 0 #ffffff12;
 }
-@keyframes career-loading-orbit { to { transform: rotate(360deg); } }
-@keyframes career-loading-pulse { 0%, 100% { transform: scale(.94); } 50% { transform: scale(1.04); } }
 @media (max-width: 480px) {
   .career-loading { top: max(12px, env(safe-area-inset-top)); gap: 10px; padding: 9px 16px 9px 10px; border-radius: 18px; }
   .career-loading-mark { flex-basis: 42px; width: 42px; height: 42px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .career-loading *, .career-loading *::before, .career-loading *::after { animation: none !important; transition: none !important; }
+  .career-loading-mark img { display: none; }
+  .career-loading-static { display: block; }
 }
-:root[data-reduced-motion="true"] .career-loading *,
-:root[data-reduced-motion="true"] .career-loading *::before,
-:root[data-reduced-motion="true"] .career-loading *::after { animation: none !important; transition: none !important; }
+:root[data-reduced-motion="true"] .career-loading-mark img { display: none; }
+:root[data-reduced-motion="true"] .career-loading-static { display: block; }
 
 .site-footer {
   display: flex;

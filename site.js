@@ -32,8 +32,8 @@
     indicator.setAttribute('aria-atomic', 'true');
     indicator.innerHTML = `
       <span class="career-loading-mark" aria-hidden="true">
-        <span class="career-loading-orbit"></span>
-        <img src="/assets/logo.png" alt="" width="30" height="30">
+        <img src="/ripples.svg" alt="" width="46" height="46">
+        <span class="career-loading-static"></span>
       </span>
       <span class="career-loading-copy">
         <span class="career-loading-brand">CareerKraft</span>

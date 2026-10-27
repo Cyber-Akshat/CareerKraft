@@ -69,7 +69,7 @@ function page(t, { site = true, fetch, readyState = 'complete' } = {}) {
   return { window, document: window.document, advance, status, loadSite, errors, revealed };
 }
 
-test('slow work shows an accessible logo status without moving focus or blocking the page', t => {
+test('slow work shows an accessible loading status without moving focus or blocking the page', t => {
   const browser = page(t);
   const { window, document, advance, status } = browser;
   document.getElementById('existing-control').focus();
@@ -81,8 +81,8 @@ test('slow work shows an accessible logo status without moving focus or blocking
   assert.equal(status().getAttribute('role'), 'status');
   assert.equal(status().getAttribute('aria-live'), 'polite');
   assert.ok(status().textContent.includes('Saving your changes…'));
-  assert.equal(new URL(status().querySelector('img').src).pathname, '/assets/logo.png');
-  assert.equal(status().querySelector('img').alt, '', 'The adjacent status text names the decorative logo');
+  assert.equal(new URL(status().querySelector('img').src).pathname, '/ripples.svg');
+  assert.equal(status().querySelector('img').alt, '', 'The adjacent status text names the decorative spinner');
   assert.equal(document.activeElement.id, 'existing-control');
   assert.equal(status().getAttribute('aria-modal'), null);
   assert.equal(document.body.getAttribute('aria-busy'), null, 'Unrelated page content stays available');
@@ -210,7 +210,7 @@ test('the initial page load releases its indicator after the load event', t => {
   assert.ok(!visible(browser.status()));
 });
 
-test('the logo animation respects both system and saved reduced-motion preferences', t => {
+test('the spinner respects both system and saved reduced-motion preferences', t => {
   const { document } = page(t);
   const style = document.createElement('style');
   style.textContent = readFileSync(path.join(root, 'site.css'), 'utf8');
@@ -223,6 +223,8 @@ test('the logo animation respects both system and saved reduced-motion preferenc
   const savedRules = rules.filter(rule => rule.selectorText?.includes('[data-reduced-motion="true"]') && rule.selectorText.includes('.career-loading'));
   for (const [source, matches] of [['system', systemRules], ['saved account', savedRules]]) {
     assert.ok(matches.length, `The ${source} preference covers the loading indicator`);
-    assert.ok(matches.some(rule => rule.style.getPropertyValue('animation') === 'none' && rule.style.getPropertyPriority('animation') === 'important'), `The ${source} preference stops continuous logo animation`);
+    assert.ok(matches.some(rule => rule.selectorText.includes('img') && rule.style.getPropertyValue('display') === 'none'), `The ${source} preference hides the SVG's independent animation`);
+    assert.ok(matches.some(rule => rule.selectorText.includes('.career-loading-static') && ['block', 'inline-block', 'grid', 'flex'].includes(rule.style.getPropertyValue('display'))), `The ${source} preference displays a static loading mark`);
   }
+  assert.ok(document.querySelector('.career-loading-static'), 'A static mark remains available when animation is disabled');
 });
