@@ -29,6 +29,47 @@ async function isolatedDatabase(t) {
   return { ...connection, database: name };
 }
 
+test('MySQL CV scans preserve analysis, enforce constraints and cascade per account', { skip: !testUrl }, async t => {
+  const connection = await isolatedDatabase(t);
+  const db = createDatabase({ mysql: connection });
+  t.after(() => db.close());
+  await db.ready;
+  const firstUser = await db.prepare('INSERT INTO users(email,name,created_at) VALUES (?,?,?)')
+    .run('cv-one@example.test', 'One', 1792929600123);
+  const secondUser = await db.prepare('INSERT INTO users(email,name,created_at) VALUES (?,?,?)')
+    .run('cv-two@example.test', 'Two', 1792929600123);
+  const insert = db.prepare(`INSERT INTO cv_scans
+    (user_id,extracted_text,analysis_json,created_at) VALUES (?,?,?,?)`);
+  const text = 'Research project: analysed network traffic. \u{1f4c4}\n'.repeat(2500);
+  const analysis = { strengths: ['Clear project'], improvements: ['Explain the approach'],
+    missingVerifiedSkills: ['Research'], rewrittenBullets: ['Analysed network traffic in a research project.'] };
+  const scan = await insert.run(firstUser.lastInsertRowid, text, JSON.stringify(analysis), 1792929600123);
+  const other = await insert.run(secondUser.lastInsertRowid, 'Other CV', '{}', 1792929600456);
+  assert.ok(scan.lastInsertRowid > 0);
+  assert.ok(other.lastInsertRowid > scan.lastInsertRowid);
+  const row = await db.prepare('SELECT * FROM cv_scans WHERE id=?').get(scan.lastInsertRowid);
+  assert.equal(row.file_name, null);
+  assert.equal(row.extracted_text, text);
+  assert.equal(row.created_at, 1792929600123);
+  assert.deepEqual(typeof row.analysis_json === 'string' ? JSON.parse(row.analysis_json) : row.analysis_json, analysis);
+  for (const score of ['overall_score', 'structure_score', 'clarity_score', 'evidence_score', 'relevance_score']) {
+    assert.equal(row[score], 0, score);
+  }
+  await assert.rejects(insert.run(firstUser.lastInsertRowid, null, '{}', 1), { code: 'ER_BAD_NULL_ERROR' });
+  await assert.rejects(insert.run(firstUser.lastInsertRowid, 'CV', '{invalid JSON}', 1), { code: 'ER_INVALID_JSON_TEXT' });
+  await assert.rejects(insert.run(999999, 'CV', '{}', 1), { code: 'ER_NO_REFERENCED_ROW_2' });
+  const reopened = createDatabase({ mysql: connection });
+  try {
+    await reopened.ready;
+    assert.equal((await reopened.prepare('SELECT COUNT(*) AS count FROM cv_scans').get()).count, 2);
+  } finally { await reopened.close(); }
+  await db.prepare('DELETE FROM users WHERE id=?').run(firstUser.lastInsertRowid);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM cv_scans WHERE user_id=?')
+    .get(firstUser.lastInsertRowid)).count, 0);
+  assert.equal((await db.prepare('SELECT id FROM cv_scans WHERE user_id=?')
+    .get(secondUser.lastInsertRowid)).id, other.lastInsertRowid);
+});
+
 test('MySQL supports account security, settings, roadmaps, conversations and deletion', { skip: !testUrl }, async t => {
   const connection = await isolatedDatabase(t);
   const mails = [];

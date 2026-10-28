@@ -35,6 +35,8 @@ function mysqlDestination({ nonempty = false, mismatch = false, requiredColumn =
   const metadata = {
     users: ['id', 'email', 'password', 'created_at'],
     roadmaps: ['id', 'user_id', 'career_id', 'career_title', 'status', 'created_at', 'updated_at'],
+    cv_scans: ['id', 'user_id', 'file_name', 'extracted_text', 'overall_score', 'structure_score',
+      'clarity_score', 'evidence_score', 'relevance_score', 'analysis_json', 'created_at'],
     account_settings: ['user_id', 'theme', 'reduced_motion', 'updated_at', 'preferences_saved']
   };
   let snapshot;
@@ -108,6 +110,29 @@ test('migration refuses an occupied destination without replacing existing recor
   assert.ok(target.rolledBack);
   assert.deepEqual(target.rows.users, [{ id: 99 }]);
   assert.ok(target.closed);
+});
+
+test('migration preserves CV scan IDs, scores, extracted text and analysis JSON', async t => {
+  const analysis = JSON.stringify({ strengths: ['Clear education section'], rewrittenBullets: [] });
+  const sourcePath = sqliteFixture(t, db => {
+    db.exec(`CREATE TABLE cv_scans (
+      id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), file_name TEXT,
+      extracted_text TEXT, overall_score INTEGER, structure_score INTEGER, clarity_score INTEGER,
+      evidence_score INTEGER, relevance_score INTEGER, analysis_json TEXT, created_at INTEGER
+    )`);
+    db.prepare('INSERT INTO cv_scans VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(12, 7, null, 'Education\nComputer Science', 78, 85, 80, 65, 82, analysis, 1792929600123);
+  });
+  const before = readFileSync(sourcePath);
+  const target = mysqlDestination();
+  const result = await migrateSqliteToMysql({ sourcePath, createTarget: () => target });
+  assert.equal(result.counts.cv_scans, 1);
+  assert.deepEqual(target.rows.cv_scans, [{
+    id: 12, user_id: 7, file_name: null, extracted_text: 'Education\nComputer Science',
+    overall_score: 78, structure_score: 85, clarity_score: 80, evidence_score: 65,
+    relevance_score: 82, analysis_json: analysis, created_at: 1792929600123
+  }]);
+  assert.deepEqual(readFileSync(sourcePath), before);
 });
 
 test('migration rolls back all copied records for unsupported populated source columns', async t => {

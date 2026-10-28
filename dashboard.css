@@ -1486,6 +1486,50 @@ body:has(> .skill-detail-drawer[open]) { overflow: hidden; }
 .builder-bubbles { max-width: 100%; height: auto; aspect-ratio: 22 / 21; }
 .level-lumia-orb { max-width: 100%; aspect-ratio: 1; height: auto; }
 
+.cv-scanner-promo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 20px 22px;
+  border: 1px solid #ffffffb3;
+  border-radius: 22px;
+  background: linear-gradient(120deg, var(--surface), var(--soft));
+  box-shadow: var(--clay-shadow);
+}
+.cv-scanner-promo-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  color: var(--blue);
+  background: var(--surface);
+  box-shadow: var(--control-shadow);
+  font-size: 23px;
+}
+.cv-scanner-promo-copy { min-width: 0; }
+.cv-scanner-promo-copy .dashboard-eyebrow { margin-bottom: 4px; }
+.cv-scanner-promo-copy h2 { font-size: 17px; line-height: 1.35; }
+.cv-scanner-promo-copy p { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.cv-scanner-promo-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 15px;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(145deg, #9b78e9, #7550cb);
+  box-shadow: 4px 5px 9px #8f70c044;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cv-scanner-promo-link:hover { transform: translateY(-2px); }
+
 @media (min-width: 601px) {
   .dashboard-sidebar { overflow-y: auto; overscroll-behavior: contain; }
 }
@@ -1495,6 +1539,10 @@ body:has(> .skill-detail-drawer[open]) { overflow: hidden; }
   .welcome-art { opacity: .2; }
 }
 @media (max-width: 600px) {
+  .cv-scanner-promo { grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 17px; }
+  .cv-scanner-promo-icon { width: 42px; height: 42px; }
+  .cv-scanner-promo-copy h2 { font-size: 15px; }
+  .cv-scanner-promo-link { grid-column: 1 / -1; width: 100%; }
   .dashboard-sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px 8px; }
   .dashboard-brand { min-width: 0; min-height: 44px; padding: 0; }
   .dashboard-sidebar-bottom { position: static; grid-column: 2; grid-row: 1; margin: 0; }

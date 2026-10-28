@@ -300,3 +300,14 @@ grade slide appearance. Incomplete, corrupt or failed processing cannot approve
 an uploaded file automatically. The original work stays in data/evidence-uploads;
 temporary media is processed in data/evidence-processing and removed afterward.
 Both directories stay private.
+
+CV Scanner V1 uses the same server-side GROQ_API_KEY. Send an authenticated
+`POST /api/cv/scan` multipart request with one file in the `cv` field; let the
+browser set the multipart Content-Type and boundary. Accepted formats are PDF,
+DOCX and TXT, up to 10 MB and 20,000 extracted characters. V1 requires complete,
+readable text-only documents; scanned PDFs and documents with images or drawings
+may be rejected. The server loads the selected career and verified skills from
+the signed-in account, saves validated results in `cv_scans`, and removes the
+temporary upload. Rewrites are limited to conservative edits that preserve source
+facts; unsupported suggestions are omitted. Run the scanner checks with
+`node --test tests/cv-analysis.test.js tests/cv-scan-api.test.js`.

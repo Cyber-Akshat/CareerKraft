@@ -8,7 +8,7 @@ const TABLES = Object.freeze([
   'users', 'tokens', 'sessions', 'session_activity', 'oauth_states', 'profiles',
   'career_assessments', 'early_access', 'career_matches', 'selected_career',
   'roadmaps', 'roadmap_steps', 'roadmap_progress', 'lumia_conversations',
-  'lumia_messages', 'evidence_submissions', 'user_skills', 'skill_verifications',
+  'lumia_messages', 'cv_scans', 'evidence_submissions', 'user_skills', 'skill_verifications',
   'roadmap_step_content', 'roadmap_level_notifications', 'reviewers',
   'account_settings', 'settings_email_changes', 'settings_session_verifications',
   'settings_oauth_states', 'auth_rate_limits'

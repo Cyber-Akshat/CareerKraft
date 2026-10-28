@@ -480,4 +480,4 @@ async function extractUploadedEvidence(uploadedFile, { processMediaEvidence } = 
 }
 
 module.exports = { MAX_EVIDENCE_FILE_SIZE, MAX_EVIDENCE_TEXT_LENGTH, TEXT_EVIDENCE_EXTENSIONS, SUPPORTED_EVIDENCE_ACCEPT,
-  cleanExtractedEvidenceText, extractUploadedEvidence, inspectEvidenceFile };
+  cleanExtractedEvidenceText, extractUploadedEvidence, inspectEvidenceFile, safeFileName };

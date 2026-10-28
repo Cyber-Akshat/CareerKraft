@@ -67,6 +67,13 @@ test('dashboard loads an existing roadmap without recreating it', async t => {
   assert.equal(calls, 1);
   assert.equal(d.querySelector('#dashboard-career-title').textContent, 'Teacher');
 });
+test('dashboard offers a direct path to scan a CV', t => {
+  const dom = new JSDOM(html);
+  t.after(() => dom.window.close());
+  const promo = dom.window.document.querySelector('.cv-scanner-promo');
+  assert.equal(promo.querySelector('h2').textContent, 'Make your CV work harder');
+  assert.equal(promo.querySelector('a').getAttribute('href'), 'cv-scanner.html');
+});
 
 test('an unavailable account stops loading and retry restores its roadmap and journey', async t => {
   let attempts = 0;

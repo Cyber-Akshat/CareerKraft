@@ -4,14 +4,16 @@ const { generateModuleContent, validateModuleContent, validateLearningResources,
 const { chooseLearningResources } = require('./learning-resource-library');
 const express = require('express');
 const multer = require('multer');
-const { MAX_EVIDENCE_FILE_SIZE, inspectEvidenceFile, extractUploadedEvidence } = require('./evidence-files');
+const { MAX_EVIDENCE_FILE_SIZE, inspectEvidenceFile, extractUploadedEvidence, safeFileName } = require('./evidence-files');
+const { analyseCvWithLumia, validateCvAnalysis } = require('./cv-analysis');
 const { createMediaEvidenceProcessor } = require('./media-evidence');
 const { isAllowedEvidenceFilename } = require('./evidence-policy');
 const { rateLimit } = require('express-rate-limit');
 const { createDatabase } = require('./database');
-const { randomBytes, createHash } = require('node:crypto');
+const { randomBytes, randomUUID, createHash } = require('node:crypto');
 const { isIP } = require('node:net');
 const { mkdirSync, writeFileSync, unlinkSync, existsSync } = require('node:fs');
+const { mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
 const { createBrevoMailer, createEmailJSMailer } = require('./email-delivery');
 const { installAccountSettings, preferencesFor } = require('./account-settings-server');
@@ -537,6 +539,27 @@ function createApp(options = {}) {
       callback(null, true);
     }
   }).fields([{ name: 'evidenceFile', maxCount: 1 }, { name: 'file', maxCount: 1 }]);
+  const cvUploadDir = path.resolve(options.cvUploadDir || path.join(dataDir, 'cv-uploads'));
+  const cvExtensions = new Set(['.pdf', '.docx', '.txt']);
+  const parseCvUpload = multer({
+    storage: multer.diskStorage({
+      destination(req, file, callback) {
+        mkdir(cvUploadDir, { recursive: true }).then(() => callback(null, cvUploadDir), callback);
+      },
+      filename(req, file, callback) {
+        callback(null, `${Date.now()}-${randomUUID()}${path.extname(file.originalname).toLowerCase()}`);
+      }
+    }),
+    limits: { fileSize: MAX_EVIDENCE_FILE_SIZE, files: 1, fields: 3, parts: 4, fieldSize: 4096 },
+    fileFilter(req, file, callback) {
+      if (!isAllowedEvidenceFilename(file.originalname) || !cvExtensions.has(path.extname(file.originalname).toLowerCase())) {
+        const error = new Error('Only PDF, DOCX and TXT CVs are supported.');
+        error.code = 'UNSUPPORTED_CV_TYPE';
+        return callback(error);
+      }
+      callback(null, true);
+    }
+  }).single('cv');
   function evidenceFilePath(storageKey) {
     if (!/^[a-f0-9]{64}$/.test(storageKey || '')) return null;
     const currentPath = path.join(evidenceUploadDir, storageKey);
@@ -610,6 +633,21 @@ CREATE TABLE IF NOT EXISTS lumia_messages (
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cv_scans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  file_name TEXT,
+  extracted_text TEXT NOT NULL,
+  overall_score INTEGER NOT NULL DEFAULT 0,
+  structure_score INTEGER NOT NULL DEFAULT 0,
+  clarity_score INTEGER NOT NULL DEFAULT 0,
+  evidence_score INTEGER NOT NULL DEFAULT 0,
+  relevance_score INTEGER NOT NULL DEFAULT 0,
+  analysis_json TEXT NOT NULL CHECK (json_valid(analysis_json)),
+  created_at INTEGER NOT NULL,
+  CONSTRAINT fk_cv_scans_user
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_lumia_conversations_user
   ON lumia_conversations(user_id, updated_at);
@@ -889,7 +927,8 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     if (req.path.startsWith('/api/')) res.set('Cache-Control', 'no-store');
     if (production && !req.secure) return res.status(400).json({ error: 'A secure connection is required.' });
     const contentType = req.headers['content-type']?.split(';')[0].trim();
-    const evidenceUpload = (/^\/api\/roadmap\/steps\/[^/]+\/evidence\/?$/.test(req.path) || req.path === '/api/settings/avatar') && contentType === 'multipart/form-data';
+    const evidenceUpload = (/^\/api\/roadmap\/steps\/[^/]+\/evidence\/?$/.test(req.path) ||
+      /^\/api\/cv\/scan\/?$/.test(req.path) || req.path === '/api/settings/avatar') && contentType === 'multipart/form-data';
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) &&
         (req.headers.origin !== appUrl.origin || req.headers['sec-fetch-site'] === 'cross-site' ||
          (contentType !== 'application/json' && !evidenceUpload))) return res.status(403).json({ error: 'Unable to complete this request.' });
@@ -1432,6 +1471,73 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       res.json((await buildLumiaUserContext({ userId: user.id })));
     });
   }
+
+  /* =========================================
+     CV SCANNER
+  ========================================= */
+  app.post('/api/cv/scan', async (req, res) => {
+    // Resolve the session before accepting any upload bytes or creating files.
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const invalidUpload = (message, status = 400) => Object.assign(new Error(message), { cvInputError: true, status });
+    let status = 200;
+    let result;
+    try {
+      if (!req.is('multipart/form-data')) throw invalidUpload('Please upload a CV.');
+      try {
+        await new Promise((resolve, reject) => parseCvUpload(req, res, error => error ? reject(error) : resolve()));
+      } catch (error) {
+        if (error.code === 'LIMIT_FILE_SIZE') throw invalidUpload('Your CV must be 10 MB or smaller.', 413);
+        if (error.code === 'UNSUPPORTED_CV_TYPE') throw invalidUpload(error.message);
+        if (error instanceof multer.MulterError || !error.code) {
+          throw invalidUpload('Upload one PDF, DOCX or TXT CV using the cv field.');
+        }
+        throw error;
+      }
+      if (!req.file) throw invalidUpload('Please upload a CV.');
+      const extracted = await extractUploadedEvidence(req.file);
+      const cvText = extracted.text?.trim();
+      if (!extracted.autoReviewable || !cvText) {
+        throw invalidUpload("CareerKraft couldn't read the complete text of this CV. Please upload a text-only PDF, DOCX or TXT file with readable text and no more than 20,000 characters.");
+      }
+
+      const [selectedCareer, skillRows] = await Promise.all([
+        db.prepare('SELECT career_id, title FROM selected_career WHERE user_id = ? LIMIT 1').get(user.id),
+        db.prepare(`SELECT skill_name, verified_count FROM user_skills
+          WHERE user_id = ? AND verified_count > 0
+          ORDER BY verified_count DESC, last_verified_at DESC, id DESC`).all(user.id)
+      ]);
+      const targetCareer = selectedCareer?.title || null;
+      const verifiedSkills = skillRows.map(skill => ({ name: skill.skill_name, verifiedCount: Number(skill.verified_count) }));
+      const rawAnalysis = await (options.analyseCvWithLumia || analyseCvWithLumia)(
+        { cvText, targetCareer, verifiedSkills }, { fetch: fetchLumia }
+      );
+      const analysis = validateCvAnalysis(rawAnalysis, { cvText, verifiedSkills });
+      const fileName = safeFileName(req.file.originalname);
+      const saved = await db.prepare(`INSERT INTO cv_scans (
+        user_id, file_name, extracted_text, overall_score, structure_score, clarity_score,
+        evidence_score, relevance_score, analysis_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        user.id, fileName, cvText, analysis.overallScore, analysis.scores.structure,
+        analysis.scores.clarity, analysis.scores.evidence, analysis.scores.relevance,
+        JSON.stringify(analysis), Date.now()
+      );
+      result = { success: true, scanId: Number(saved.lastInsertRowid), fileName, targetCareer, analysis };
+    } catch (error) {
+      status = error.cvInputError ? error.status : 500;
+      result = { error: error.cvInputError ? error.message : "CareerKraft couldn't analyse this CV right now." };
+      if (!error.cvInputError) console.error('CV scan failed.');
+    } finally {
+      // V1 stores extracted text and analysis, never the original uploaded CV.
+      if (req.file?.path) {
+        try { await unlink(req.file.path); }
+        catch (error) {
+          if (error.code !== 'ENOENT') console.error('Could not remove a temporary CV upload.');
+        }
+      }
+    }
+    res.status(status).json(result);
+  });
 
   app.get('/api/lumia/history', async (req, res) => {
     const user = (await requireUser(req, res));
@@ -3107,6 +3213,10 @@ app.post('/api/early-access', async (req, res) => {
   publicFiles.add('accessibility.js');
   publicFiles.add('dashboard-tour.js');
   publicFiles.add('dashboard-tour.css');
+  [
+    'cv-scanner.html', 'cv-scanner.css', 'cv-scanner.js',
+    'cv-results.html', 'cv-results.css', 'cv-results.js'
+  ].forEach(file => publicFiles.add(file));
   app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
   app.get('/{*file}', (req, res, next) => {
     const file = req.params.file.join('/');

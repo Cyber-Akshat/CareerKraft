@@ -73,6 +73,21 @@ const TABLES = [
     FOREIGN KEY (conversation_id) REFERENCES lumia_conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_lumia_messages_conversation (conversation_id, created_at)`],
+  ['cv_scans', `
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    file_name VARCHAR(255),
+    extracted_text LONGTEXT NOT NULL,
+    overall_score INT NOT NULL DEFAULT 0,
+    structure_score INT NOT NULL DEFAULT 0,
+    clarity_score INT NOT NULL DEFAULT 0,
+    evidence_score INT NOT NULL DEFAULT 0,
+    relevance_score INT NOT NULL DEFAULT 0,
+    analysis_json JSON NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT fk_cv_scans_user
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`],
   ['evidence_submissions', `
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL,
     roadmap_step_id BIGINT UNSIGNED NOT NULL, submission_type VARCHAR(32) NOT NULL DEFAULT 'text',
