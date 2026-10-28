@@ -3218,6 +3218,9 @@ app.post('/api/early-access', async (req, res) => {
     'cv-results.html', 'cv-results.css', 'cv-results.js'
   ].forEach(file => publicFiles.add(file));
   app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+  // Keep saved CV links inside the dashboard's shared navigation and theme.
+  app.get('/cv-scanner.html', (req, res) => res.redirect(302, '/dashboard.html#cv-scanner'));
+  app.get('/cv-results.html', (req, res) => res.redirect(302, '/dashboard.html#cv-results'));
   app.get('/{*file}', (req, res, next) => {
     const file = req.params.file.join('/');
     if (!publicFiles.has(file)) return next();

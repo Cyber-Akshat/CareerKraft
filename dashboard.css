@@ -563,6 +563,9 @@ body.lumia-building { overflow:hidden; }
 @media(prefers-reduced-motion:reduce) { .lumia-builder-overlay *, .builder-bubbles:before { animation:none !important; } }
 
 /* Skills lives in its own sidebar view, sharing the dashboard shell and theme. */
+.dashboard-cv-view-active .dashboard-workspace { grid-template-columns: minmax(0, 1fr); }
+.dashboard-cv-view-active .dashboard-primary { min-width: 0; }
+.dashboard-cv-view-active #dashboard-tour-launch { display: none; }
 .dashboard-skills-view .dashboard-workspace { grid-template-columns:minmax(0,1fr); }
 .dashboard-skills-view .skills-card { margin-top:0; }
 .dashboard-skills-view .skills-list { grid-template-columns:repeat(3,minmax(0,1fr)); padding-top:24px; gap:32px 24px; }

@@ -3,6 +3,7 @@
 
     const RESULT_STORAGE_KEY = "careerkraft-cv-scan-result";
     const CIRCUMFERENCE = 326.73;
+    const dashboardMode = Boolean(document.getElementById("cv-results-view"));
     const scanAnotherButton = document.getElementById("scanAnotherButton");
     const improveCvButton = document.getElementById("improveCvButton");
     const overallScore = document.getElementById("overallScore");
@@ -186,13 +187,21 @@
         catch { /* Storage can be unavailable; navigation should still work. */ }
     }
 
+    function goToScanner(replace = false) {
+        if (dashboardMode) {
+            if (replace) window.location.replace("#cv-scanner");
+            else window.location.hash = "cv-scanner";
+        } else if (replace) window.location.replace("/cv-scanner.html");
+        else window.location.href = "/cv-scanner.html";
+    }
+
     function loadCvResult() {
         stopAnimations();
         let result;
         try {
             const rawResult = sessionStorage.getItem(RESULT_STORAGE_KEY);
             if (!rawResult) {
-                window.location.replace("/cv-scanner.html");
+                goToScanner(true);
                 return;
             }
             result = JSON.parse(rawResult);
@@ -205,7 +214,7 @@
         } catch {
             console.error("Invalid CV scan result.");
             forgetResult();
-            window.location.replace("/cv-scanner.html");
+            goToScanner(true);
             return;
         }
 
@@ -236,7 +245,8 @@
     scanAnotherButton.addEventListener("click", () => {
         stopAnimations();
         forgetResult();
-        window.location.href = "/cv-scanner.html";
+        if (dashboardMode) window.dispatchEvent(new CustomEvent("careerkraft:cv-reset"));
+        goToScanner();
     });
 
     improveCvButton.addEventListener("click", () => {
@@ -245,8 +255,14 @@
 
     window.addEventListener("pagehide", stopAnimations);
     window.addEventListener("pageshow", event => {
-        if (event.persisted) loadCvResult();
+        if (event.persisted && (!dashboardMode || window.location.hash === "#cv-results")) loadCvResult();
     });
 
-    loadCvResult();
+    if (dashboardMode) {
+        window.addEventListener("careerkraft:dashboard-view", event => {
+            if (event.detail?.view === "cv-results") loadCvResult();
+            else stopAnimations();
+        });
+    }
+    if (!dashboardMode || window.location.hash === "#cv-results") loadCvResult();
 })();

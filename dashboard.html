@@ -37,6 +37,8 @@
     rel="stylesheet"
     href="dashboard.css"
   >
+  <link rel="stylesheet" href="cv-scanner.css">
+  <link rel="stylesheet" href="cv-results.css">
 
   <link
     rel="stylesheet"
@@ -162,7 +164,7 @@
         </a>
 
 
-        <a href="cv-scanner.html" class="dashboard-nav-item" id="cv-scanner-nav-link">
+        <a href="#cv-scanner" class="dashboard-nav-item" id="cv-scanner-nav-link">
 
           <span class="nav-icon" aria-hidden="true">&#9636;</span>
 
@@ -618,7 +620,7 @@
           <h2 id="cv-scanner-promo-title">Make your CV work harder</h2>
           <p>Get Lumia's feedback on your CV, verified skills and chosen career.</p>
         </div>
-        <a class="cv-scanner-promo-link" href="cv-scanner.html">
+        <a class="cv-scanner-promo-link" href="#cv-scanner">
           Scan your CV <span aria-hidden="true">&#8594;</span>
         </a>
       </section>
@@ -788,6 +790,520 @@
       <!-- =====================================
            VERIFIED SKILLS
       ====================================== -->
+      <section id="cv-scanner-view" class="dashboard-cv-view" aria-label="CV Scanner" hidden>
+        <section id="uploadView" class="scanner-view active-view">
+
+                    <div class="page-header">
+
+                        <p class="eyebrow">Career tools</p>
+
+                        <h1>CV Scanner</h1>
+
+                        <p class="page-description">
+                            Get personalised feedback on your CV using
+                            Lumia and your CareerKraft progress.
+                        </p>
+
+                    </div>
+
+
+                    <div class="scanner-container">
+
+                        <div class="scanner-card">
+
+                            <div class="scanner-card-header">
+
+                                <div>
+                                    <h2>Scan your CV</h2>
+
+                                    <p>
+                                        Lumia will review your CV,
+                                        verified skills and target career.
+                                    </p>
+                                </div>
+
+                                <div class="lumia-mini-badge">
+                                    <span class="lumia-dot" aria-hidden="true"></span>
+                                    Lumia
+                                </div>
+
+                            </div>
+
+
+                            <!-- UPLOAD ZONE -->
+                            <div class="upload-zone" id="uploadZone" tabindex="0">
+
+                                <input type="file" id="cvFileInput" name="cv" accept=".pdf,.docx,.txt" aria-label="Choose your CV" hidden="">
+
+                                <div class="upload-icon-wrapper" aria-hidden="true">
+                                    <div class="upload-icon">↑</div>
+                                </div>
+
+                                <h3>Drag and drop your CV here</h3>
+
+                                <p>
+                                    or
+                                    <button type="button" id="browseButton" class="browse-button">
+                                        click to browse
+                                    </button>
+                                </p>
+
+                                <span class="upload-support">
+                                    Supports PDF, DOCX and TXT · Max 10MB
+                                </span>
+
+                            </div>
+
+
+                            <!-- FILE SELECTED -->
+                            <div class="selected-file-card hidden" id="selectedFileCard">
+
+                                <div class="file-icon">PDF</div>
+
+                                <div class="file-information">
+                                    <strong id="selectedFileName">My CV.pdf</strong>
+                                    <span id="selectedFileSize">245 KB</span>
+                                </div>
+
+                                <button type="button" id="removeFileButton" class="remove-file-button" aria-label="Remove file">
+                                    ×
+                                </button>
+
+                            </div>
+
+
+                            <!-- ERROR -->
+                            <div class="upload-error hidden" id="uploadError" role="alert"></div>
+
+
+                            <!-- SCAN BUTTON -->
+                            <button type="button" class="primary-button" id="scanCvButton" disabled="">
+                                <span>Scan my CV</span>
+                                <span class="button-sparkle" aria-hidden="true">✦</span>
+                            </button>
+
+
+                            <div class="privacy-note">
+
+                                <span class="privacy-icon" aria-hidden="true">◇</span>
+
+                                <p>
+                                    Your CV is analysed privately and is
+                                    not used to automatically apply for jobs.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- SIDE INFO -->
+                        <div class="scanner-side-panel">
+
+                            <div class="side-card">
+
+                                <span class="side-card-icon" aria-hidden="true">✦</span>
+
+                                <h3>More than a CV score</h3>
+
+                                <p>
+                                    CareerKraft compares your CV with the
+                                    skills and progress you've already
+                                    demonstrated.
+                                </p>
+
+                            </div>
+
+                            <div class="side-card">
+
+                                <span class="side-card-icon" aria-hidden="true">✓</span>
+
+                                <h3>Evidence-backed feedback</h3>
+
+                                <p>
+                                    Lumia can highlight skills you've verified
+                                    on CareerKraft but haven't shown clearly
+                                    on your CV.
+                                </p>
+
+                            </div>
+
+                            <div class="side-card">
+
+                                <span class="side-card-icon" aria-hidden="true">↗</span>
+
+                                <h3>Stronger bullet points</h3>
+
+                                <p>
+                                    Get clearer CV wording without inventing
+                                    achievements, numbers or experience.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+        <section id="analysingView" class="scanner-view">
+
+                    <div class="analysis-wrapper">
+
+                        <div class="analysis-card">
+
+                            <div class="level-lumia-orb" aria-hidden="true"><div class="level-lumia-ring ring-one"></div><div class="level-lumia-ring ring-two"></div><div class="level-lumia-ring ring-three"></div><div class="level-lumia-core">✦</div></div>
+
+
+                            <div class="analysis-heading">
+
+                                <p class="eyebrow">Lumia</p>
+
+                                <h1>Analysing your CV</h1>
+
+                                <p>
+                                    Lumia is reviewing your CV and comparing
+                                    it with your CareerKraft progress.
+                                </p>
+
+                            </div>
+
+
+                            <div class="analysis-steps">
+
+                                <div class="analysis-step completed" data-step="reading">
+
+                                    <div class="step-indicator">✓</div>
+
+                                    <div>
+                                        <strong>Reading your CV</strong>
+                                        <span>
+                                            Extracting your experience,
+                                            projects and skills.
+                                        </span>
+                                    </div>
+
+                                </div>
+
+                                <div class="analysis-step" data-step="structure">
+
+                                    <div class="step-indicator">2</div>
+
+                                    <div>
+                                        <strong>Analysing structure and content</strong>
+                                        <span>
+                                            Reviewing clarity, organisation
+                                            and evidence.
+                                        </span>
+                                    </div>
+
+                                </div>
+
+                                <div class="analysis-step" data-step="skills">
+
+                                    <div class="step-indicator">3</div>
+
+                                    <div>
+                                        <strong>Comparing verified skills</strong>
+                                        <span>
+                                            Checking your CareerKraft skill
+                                            profile.
+                                        </span>
+                                    </div>
+
+                                </div>
+
+                                <div class="analysis-step" data-step="career">
+
+                                    <div class="step-indicator">4</div>
+
+                                    <div>
+                                        <strong>Checking career relevance</strong>
+                                        <span>
+                                            Comparing your CV against your
+                                            selected career direction.
+                                        </span>
+                                    </div>
+
+                                </div>
+
+                                <div class="analysis-step" data-step="feedback">
+
+                                    <div class="step-indicator">5</div>
+
+                                    <div>
+                                        <strong>Generating personalised feedback</strong>
+                                        <span>
+                                            Finding your strongest next
+                                            improvements.
+                                        </span>
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="analysis-progress">
+
+                                <div class="progress-header">
+                                    <span>Analysing</span>
+                                    <span id="analysisPercentage">20%</span>
+                                </div>
+
+                                <div class="progress-track">
+                                    <div class="progress-fill" id="analysisProgressFill"></div>
+                                </div>
+
+                            </div>
+
+
+                            <div class="lumia-tip">
+
+                                <div class="tip-icon" aria-hidden="true">✦</div>
+
+                                <div>
+                                    <strong>Lumia is looking at</strong>
+                                    <p>
+                                        Your CV content, verified CareerKraft
+                                        skills and target career.
+                                    </p>
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </section>
+      </section>
+
+      <section id="cv-results-view" class="dashboard-cv-view" aria-label="CV results" hidden>
+        <header class="cv-results-header">
+
+                    <div>
+                        <p class="eyebrow">Lumia CV analysis</p>
+                        <h1>Your CV results</h1>
+                    </div>
+
+                    <button type="button" class="secondary-button" id="scanAnotherButton">
+                        Scan another CV
+                    </button>
+
+                </header>
+        <section class="results-page">
+
+                    <!-- HERO -->
+                    <div class="results-hero">
+
+                        <div class="score-card">
+
+                            <div class="score-ring">
+
+                                <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+                                    <circle class="score-ring-background" cx="60" cy="60" r="52"></circle>
+                                    <circle class="score-ring-progress" id="scoreRingProgress" cx="60" cy="60" r="52"></circle>
+                                </svg>
+
+                                <div class="score-value">
+                                    <strong id="overallScore">0</strong>
+                                    <span>/100</span>
+                                </div>
+
+                            </div>
+
+
+                            <div class="score-copy">
+
+                                <span class="score-label">CV Strength</span>
+
+                                <h2 id="scoreTitle">Your CV has a strong foundation</h2>
+
+                                <p id="careerAlignmentSummary">
+                                    Lumia is preparing your personalised feedback.
+                                </p>
+
+                                <div class="target-career">
+                                    <span>Target career</span>
+                                    <strong id="targetCareer">Not selected</strong>
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- CATEGORY SCORES -->
+                        <div class="category-grid">
+
+                            <div class="category-card">
+                                <span class="category-name">Structure</span>
+                                <strong id="structureScore">0</strong>
+                                <div class="mini-progress">
+                                    <div id="structureBar" class="mini-progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div class="category-card">
+                                <span class="category-name">Clarity</span>
+                                <strong id="clarityScore">0</strong>
+                                <div class="mini-progress">
+                                    <div id="clarityBar" class="mini-progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div class="category-card">
+                                <span class="category-name">Evidence</span>
+                                <strong id="evidenceScore">0</strong>
+                                <div class="mini-progress">
+                                    <div id="evidenceBar" class="mini-progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div class="category-card">
+                                <span class="category-name">Career relevance</span>
+                                <strong id="relevanceScore">0</strong>
+                                <div class="mini-progress">
+                                    <div id="relevanceBar" class="mini-progress-fill"></div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- MAIN GRID -->
+                    <div class="results-grid">
+
+                        <!-- STRENGTHS -->
+                        <section class="result-card">
+
+                            <div class="result-card-header">
+
+                                <div class="result-icon success" aria-hidden="true">✓</div>
+
+                                <div>
+                                    <p class="result-eyebrow">What's working</p>
+                                    <h2>Your strengths</h2>
+                                </div>
+
+                            </div>
+
+                            <div class="result-list" id="strengthsList"></div>
+
+                        </section>
+
+
+                        <!-- IMPROVEMENTS -->
+                        <section class="result-card">
+
+                            <div class="result-card-header">
+
+                                <div class="result-icon improvement" aria-hidden="true">↗</div>
+
+                                <div>
+                                    <p class="result-eyebrow">Focus here next</p>
+                                    <h2>Priority improvements</h2>
+                                </div>
+
+                            </div>
+
+                            <div class="result-list" id="improvementsList"></div>
+
+                        </section>
+
+                    </div>
+
+
+                    <!-- MISSING SKILLS -->
+                    <section class="result-card wide-card">
+
+                        <div class="result-card-header">
+
+                            <div class="result-icon skill" aria-hidden="true">✦</div>
+
+                            <div>
+                                <p class="result-eyebrow">CareerKraft found something</p>
+
+                                <h2>Verified skills missing from your CV</h2>
+
+                                <p class="result-description">
+                                    These are skills you've already demonstrated
+                                    on CareerKraft but may not be showing clearly
+                                    enough on your CV.
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <div class="skills-grid" id="missingSkillsList"></div>
+
+                        <div class="empty-state hidden" id="missingSkillsEmpty">
+                            Your verified CareerKraft skills are already well
+                            represented in your CV.
+                        </div>
+
+                    </section>
+
+
+                    <!-- BULLET REWRITES -->
+                    <section class="result-card wide-card">
+
+                        <div class="result-card-header">
+
+                            <div class="result-icon rewrite" aria-hidden="true">✎</div>
+
+                            <div>
+                                <p class="result-eyebrow">Make your experience stronger</p>
+
+                                <h2>Suggested bullet rewrites</h2>
+
+                                <p class="result-description">
+                                    Lumia improves the wording without inventing
+                                    experience, achievements or numbers.
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <div class="rewrite-list" id="bulletRewritesList"></div>
+
+                        <div class="empty-state hidden" id="bulletRewritesEmpty">
+                            Lumia didn't find any bullet points that could be
+                            safely improved.
+                        </div>
+
+                    </section>
+
+
+                    <!-- ACTION -->
+                    <section class="bottom-action">
+
+                        <div>
+                            <p class="eyebrow">Next step</p>
+
+                            <h2>Turn this feedback into a stronger CV.</h2>
+
+                            <p>
+                                Soon, CareerKraft will be able to help you build
+                                evidence-backed CV sections directly from your
+                                verified skills and projects.
+                            </p>
+                        </div>
+
+                        <button type="button" class="primary-button" id="improveCvButton">
+                            Improve my CV
+                            <span aria-hidden="true">✦</span>
+                        </button>
+
+                    </section>
+
+                </section>
+      </section>
+
+
       <section class="dashboard-card skills-card" id="verified-skills-card">
         <div class="skills-card-header">
           <div>
@@ -1111,6 +1627,8 @@
   <script src="dashboard-tour.js"></script>
 
   <script src="dashboard.js"></script>
+  <script src="cv-scanner.js"></script>
+  <script src="cv-results.js"></script>
   <script src="lumia-widget.js"></script>
 
 

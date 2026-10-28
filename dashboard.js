@@ -1685,6 +1685,7 @@ function showLumiaRoadmapBuilder() {
 }
 
 let dashboardLoadPending = false;
+let dashboardDataLoaded = false;
 async function initialiseDashboard() {
   if (dashboardLoadPending) return;
   dashboardLoadPending = true;
@@ -1694,7 +1695,13 @@ async function initialiseDashboard() {
   try {
     applyTheme(dashboardStorage.getItem('careerkraft-theme'));
     if (!await loadUser()) return;
+    // CV scanning needs the shared account shell, not a new roadmap generation.
+    if (['#cv-scanner', '#cv-results'].includes(window.location.hash)) {
+      updateDashboardView();
+      return;
+    }
     await Promise.all([loadRoadmap(), loadSkills()]);
+    dashboardDataLoaded = true;
     updateDashboardView();
     await checkPendingLevelTransition();
     tutorialReady = !dashboardStatus?.classList.contains('is-error');
@@ -1912,28 +1919,39 @@ function renderLevelSkillCharts(levels, journey = currentRoadmapJourney) {
 }
 
 function updateDashboardView() {
-  const skillsView = window.location.hash === '#skills';
-  document.title = skillsView ? 'Your verified skills | CareerKraft' : 'Your career dashboard | CareerKraft';
+  const view = ({ '#skills': 'skills', '#cv-scanner': 'cv-scanner', '#cv-results': 'cv-results' })[window.location.hash] || 'home';
+  const skillsView = view === 'skills';
+  const cvView = view === 'cv-scanner' || view === 'cv-results';
+  const titles = { home: 'Your career dashboard', skills: 'Your verified skills', 'cv-scanner': 'CV Scanner', 'cv-results': 'CV Results' };
+  document.title = `${titles[view]} | CareerKraft`;
   document.body.classList.toggle('dashboard-skills-view', skillsView);
+  document.body.classList.toggle('dashboard-cv-view-active', cvView);
+  document.body.dataset.dashboardView = view;
   const primary = document.querySelector('.dashboard-primary');
   if (primary) {
-    for (const child of primary.children) child.hidden = skillsView ? child.id !== 'verified-skills-card' : child.id === 'verified-skills-card';
+    const panels = { skills: 'verified-skills-card', 'cv-scanner': 'cv-scanner-view', 'cv-results': 'cv-results-view' };
+    const viewPanels = Object.values(panels);
+    for (const child of primary.children) child.hidden = view === 'home' ? viewPanels.includes(child.id) : child.id !== panels[view];
   }
   const planner = document.querySelector('.dashboard-right');
-  if (planner) planner.hidden = skillsView;
+  if (planner) planner.hidden = view !== 'home';
   const nav = document.getElementById('skills-nav-link');
+  const cvNav = document.getElementById('cv-scanner-nav-link');
   const home = document.querySelector('.dashboard-nav-item[href="dashboard.html"]');
-  nav?.classList.toggle('active', skillsView);
-  home?.classList.toggle('active', !skillsView);
-  if (skillsView) { nav?.setAttribute('aria-current', 'page'); home?.removeAttribute('aria-current'); }
-  else { nav?.removeAttribute('aria-current'); home?.setAttribute('aria-current', 'page'); }
+  for (const [item, active] of [[nav, skillsView], [cvNav, cvView], [home, view === 'home']]) {
+    item?.classList.toggle('active', active);
+    if (active) item?.setAttribute('aria-current', 'page');
+    else item?.removeAttribute('aria-current');
+  }
   const title = document.querySelector('.toolbar-title');
-  if (title) title.textContent = skillsView ? 'My verified skills' : 'My dashboard';
+  if (title) title.textContent = ({ home: 'My dashboard', skills: 'My verified skills', 'cv-scanner': 'CV Scanner', 'cv-results': 'CV results' })[view];
   if (viewAllSkillsButton) viewAllSkillsButton.hidden = skillsView;
+  window.dispatchEvent(new CustomEvent('careerkraft:dashboard-view', { detail: { view } }));
 }
 window.addEventListener('hashchange', async () => {
   updateDashboardView();
-  if (window.location.hash === '#skills') await loadSkills();
+  if (!['#cv-scanner', '#cv-results'].includes(window.location.hash) && !dashboardDataLoaded) await initialiseDashboard();
+  else if (window.location.hash === '#skills') await loadSkills();
 });
 viewAllSkillsButton?.addEventListener('click', () => { window.location.hash = 'skills'; });
 initialiseDashboard();

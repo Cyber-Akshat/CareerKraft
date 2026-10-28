@@ -157,7 +157,7 @@ test('every page loads accessibility before styles and other application scripts
   // Trustpilot's verification payload must stay separate from application UI.
   const filenames = readdirSync(root).filter(filename => filename.endsWith('.html') &&
     filename !== 'dd8adc22-d472-4bce-94ad-d465f4689348.html');
-  assert.equal(filenames.length, 13);
+  assert.equal(filenames.length, 15);
   for (const filename of filenames) {
     const dom = new JSDOM(readFileSync(path.join(root, filename), 'utf8'));
     t.after(() => dom.window.close());

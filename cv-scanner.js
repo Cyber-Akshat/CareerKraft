@@ -20,12 +20,14 @@
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
     const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".txt"];
     const RESULT_STORAGE_KEY = "careerkraft-cv-scan-result";
+    const dashboardMode = Boolean(document.getElementById("cv-scanner-view"));
 
     let selectedFile = null;
     let progressTimer = null;
     let redirectTimer = null;
     let currentProgress = 20;
     let isScanning = false;
+    let dashboardView = document.body.dataset.dashboardView || (window.location.hash === "#cv-scanner" ? "cv-scanner" : "home");
 
     /* --------------------------------
        HELPERS AND FILE VALIDATION
@@ -292,8 +294,14 @@
             const result = await scanCv(selectedFile);
             sessionStorage.setItem(RESULT_STORAGE_KEY, JSON.stringify(result));
             finishProgress();
+            // Keep another dashboard view open if the student navigated away while waiting.
+            if (dashboardMode && window.location.hash !== "#cv-scanner") {
+                isScanning = false;
+                return;
+            }
             redirectTimer = setTimeout(() => {
-                window.location.href = "/cv-results.html";
+                if (dashboardMode) window.location.hash = "cv-results";
+                else window.location.href = "/cv-results.html";
             }, 650);
         } catch (error) {
             stopProgress();
@@ -310,10 +318,9 @@
         clearTimeout(redirectTimer);
     });
 
-    window.addEventListener("pageshow", event => {
-        if (!event.persisted) return;
+    function restoreScannerView() {
         if (isScanning && currentProgress < 100) {
-            // A pending request may continue when returning from the back/forward cache.
+            showAnalysingView();
             startFakeProgress();
             return;
         }
@@ -323,6 +330,31 @@
         isScanning = false;
         showUploadView();
         scanCvButton.disabled = !selectedFile;
+    }
+
+    if (dashboardMode) {
+        window.addEventListener("careerkraft:dashboard-view", event => {
+            if (event.detail?.view === dashboardView) return;
+            dashboardView = event.detail?.view;
+            if (event.detail?.view === "cv-scanner") restoreScannerView();
+            else {
+                stopProgress();
+                clearTimeout(redirectTimer);
+            }
+        });
+        window.addEventListener("careerkraft:cv-reset", () => {
+            stopProgress();
+            clearTimeout(redirectTimer);
+            isScanning = false;
+            resetAnalysisProgress();
+            showUploadView();
+            clearSelectedFile();
+        });
+    }
+
+    window.addEventListener("pageshow", event => {
+        if (!event.persisted) return;
+        if (!dashboardMode || window.location.hash === "#cv-scanner") restoreScannerView();
     });
 
     /* --------------------------------

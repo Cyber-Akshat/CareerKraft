@@ -26,6 +26,7 @@
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
   }
   function blocked() {
+    if (document.body.classList.contains('dashboard-cv-view-active')) return true;
     if (document.readyState === 'loading' || document.querySelector('main[aria-busy="true"]')) return true;
     if (visible(document.querySelector('.cookie-banner:not([hidden])'))) return true;
     return [...document.querySelectorAll('dialog[open]:not(#dashboard-tour), #level-transition-overlay:not([hidden]), .lumia-builder-overlay')].some(visible) || document.body.classList.contains('lumia-building');
