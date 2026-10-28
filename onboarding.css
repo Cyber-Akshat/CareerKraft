@@ -1012,7 +1012,7 @@ img {
 }
 
 
-.question-header p {
+.question-header p:not(.selection-hint) {
 
   color:
     var(--muted);
