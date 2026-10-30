@@ -115,6 +115,10 @@ test('CV scanning uses canonical account context, saves the validated analysis a
   assert.equal(saved.file_name, 'student-cv.txt');
   assert.equal(saved.extracted_text, cvText);
   assert.ok(saved.created_at > 1700000000000);
+  assert.equal(result.data.createdAt, saved.created_at);
+  assert.deepEqual(result.data.verifiedSkills, [
+    { name: 'Research', verifiedCount: 3 }, { name: 'Network Analysis', verifiedCount: 2 }
+  ]);
   assert.deepEqual(JSON.parse(saved.analysis_json), result.data.analysis);
   assert.deepEqual([saved.overall_score, saved.structure_score, saved.clarity_score,
     saved.evidence_score, saved.relevance_score], [78, 85, 80, 65, 82]);

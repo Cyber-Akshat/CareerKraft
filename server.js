@@ -1514,15 +1514,16 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       );
       const analysis = validateCvAnalysis(rawAnalysis, { cvText, verifiedSkills });
       const fileName = safeFileName(req.file.originalname);
+      const createdAt = Date.now();
       const saved = await db.prepare(`INSERT INTO cv_scans (
         user_id, file_name, extracted_text, overall_score, structure_score, clarity_score,
         evidence_score, relevance_score, analysis_json, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         user.id, fileName, cvText, analysis.overallScore, analysis.scores.structure,
         analysis.scores.clarity, analysis.scores.evidence, analysis.scores.relevance,
-        JSON.stringify(analysis), Date.now()
+        JSON.stringify(analysis), createdAt
       );
-      result = { success: true, scanId: Number(saved.lastInsertRowid), fileName, targetCareer, analysis };
+      result = { success: true, scanId: Number(saved.lastInsertRowid), fileName, targetCareer, createdAt, verifiedSkills, analysis };
     } catch (error) {
       status = error.cvInputError ? error.status : 500;
       result = { error: error.cvInputError ? error.message : "CareerKraft couldn't analyse this CV right now." };

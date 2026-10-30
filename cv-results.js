@@ -6,6 +6,8 @@
     const dashboardMode = Boolean(document.getElementById("cv-results-view"));
     const scanAnotherButton = document.getElementById("scanAnotherButton");
     const improveCvButton = document.getElementById("improveCvButton");
+    const downloadReportButton = document.getElementById("downloadReportButton");
+    const cvReportMeta = document.getElementById("cvReportMeta");
     const overallScore = document.getElementById("overallScore");
     const scoreTitle = document.getElementById("scoreTitle");
     const careerAlignmentSummary = document.getElementById("careerAlignmentSummary");
@@ -17,12 +19,19 @@
     const missingSkillsEmpty = document.getElementById("missingSkillsEmpty");
     const bulletRewritesList = document.getElementById("bulletRewritesList");
     const bulletRewritesEmpty = document.getElementById("bulletRewritesEmpty");
+    const rewriteControls = document.getElementById("rewriteControls");
+    const rewritePosition = document.getElementById("rewritePosition");
+    const previousRewriteButton = document.getElementById("previousRewriteButton");
+    const nextRewriteButton = document.getElementById("nextRewriteButton");
     const categories = ["structure", "clarity", "evidence", "relevance"].map(name => ({
         name,
         score: document.getElementById(`${name}Score`),
-        bar: document.getElementById(`${name}Bar`)
+        bar: document.getElementById(`${name}Bar`),
+        caption: document.getElementById(`${name}Caption`)
     }));
     const animationFrames = new Set();
+    let rewriteCards = [];
+    let rewriteIndex = 0;
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 
     /* --------------------------------
@@ -41,12 +50,36 @@
     }
 
     function getScoreTitle(score) {
-        if (score >= 90) return "Your CV is in excellent shape";
-        if (score >= 80) return "Your CV has a strong foundation";
-        if (score >= 70) return "Your CV is heading in the right direction";
-        if (score >= 60) return "Your CV has good potential";
-        if (score >= 45) return "Your CV needs some focused improvements";
-        return "Your CV has plenty of room to grow";
+        if (score >= 90) return "Excellent shape";
+        if (score >= 75) return "Strong foundation";
+        if (score >= 60) return "Good potential";
+        if (score >= 45) return "Focused improvements";
+        return "Room to grow";
+    }
+
+    function categoryCaption(name, score, hasCareer) {
+        if (name === "relevance" && !hasCareer) return "Choose a target career";
+        const captions = {
+            structure: ["Well organised", "Structure can be clearer", "Review your CV layout"],
+            clarity: ["Clear and easy to read", "Could be clearer", "Simplify your wording"],
+            evidence: ["Strong supporting evidence", "Could be stronger", "Add supporting evidence"],
+            relevance: ["Good alignment", "Build career relevance", "Focus on your target role"]
+        };
+        return captions[name][score >= 80 ? 0 : score >= 60 ? 1 : 2];
+    }
+
+    function reportMetadata(result) {
+        let label = "Lumia CV analysis";
+        const timestamp = result.createdAt ?? result.scannedAt;
+        if (typeof timestamp === "number" || typeof timestamp === "string") {
+            const date = new Date(timestamp);
+            if (Number.isFinite(date.getTime())) {
+                label = `Analysed on ${new Intl.DateTimeFormat("en-GB", {
+                    day: "numeric", month: "short", year: "numeric"
+                }).format(date)}`;
+            }
+        }
+        return text(result.fileName) ? `${label} · ${text(result.fileName)}` : label;
     }
 
     function nextFrame(callback) {
@@ -122,15 +155,25 @@
         textItems(items, 3).forEach((item, index) => container.appendChild(createListItem(item, index)));
     }
 
-    function renderMissingSkills(skills) {
+    function renderMissingSkills(skills, verifiedSkills = []) {
         missingSkillsList.replaceChildren();
         const items = textItems(skills, 5);
+        const counts = new Map((Array.isArray(verifiedSkills) ? verifiedSkills : [])
+            .filter(skill => record(skill) && text(skill.name) && Number.isSafeInteger(skill.verifiedCount) && skill.verifiedCount > 0)
+            .map(skill => [text(skill.name).normalize("NFKC").toLowerCase(), skill.verifiedCount]));
         missingSkillsList.classList.toggle("hidden", items.length === 0);
         missingSkillsEmpty.classList.toggle("hidden", items.length > 0);
         items.forEach(skill => {
             const chip = document.createElement("div");
             chip.className = "skill-chip";
-            chip.textContent = skill;
+            const name = document.createElement("span");
+            name.className = "skill-name";
+            name.textContent = skill;
+            const verification = document.createElement("span");
+            verification.className = "skill-verification-label";
+            const count = counts.get(skill.normalize("NFKC").toLowerCase());
+            verification.textContent = count ? `Verified ${count} ${count === 1 ? "time" : "times"}` : "Verified on CareerKraft";
+            chip.append(name, verification);
             missingSkillsList.appendChild(chip);
         });
     }
@@ -154,6 +197,8 @@
 
     function renderBulletRewrites(rewrites) {
         bulletRewritesList.replaceChildren();
+        rewriteCards = [];
+        rewriteIndex = 0;
         const items = Array.isArray(rewrites) ? rewrites.filter(record).map(item => ({
             original: text(item.original), improved: text(item.improved), reason: text(item.reason)
         })).filter(item => item.original && item.improved).slice(0, 3) : [];
@@ -175,7 +220,17 @@
                 card.appendChild(reason);
             }
             bulletRewritesList.appendChild(card);
+            rewriteCards.push(card);
         });
+        updateRewriteNavigation();
+    }
+
+    function updateRewriteNavigation() {
+        rewriteCards.forEach((card, index) => { card.hidden = index !== rewriteIndex; });
+        if (rewriteControls) rewriteControls.hidden = rewriteCards.length === 0;
+        if (rewritePosition) rewritePosition.textContent = `${rewriteCards.length ? rewriteIndex + 1 : 0} / ${rewriteCards.length}`;
+        if (previousRewriteButton) previousRewriteButton.disabled = rewriteIndex === 0;
+        if (nextRewriteButton) nextRewriteButton.disabled = rewriteIndex >= rewriteCards.length - 1;
     }
 
     /* --------------------------------
@@ -220,6 +275,7 @@
 
         const analysis = result.analysis;
         const overall = clampScore(analysis.overallScore);
+        if (cvReportMeta) cvReportMeta.textContent = reportMetadata(result);
         scoreTitle.textContent = getScoreTitle(overall);
         careerAlignmentSummary.textContent = text(analysis.careerAlignmentSummary) ||
             "Lumia has reviewed the structure, clarity, evidence and career relevance of your CV.";
@@ -229,12 +285,13 @@
         animateScoreRing(overall);
         categories.forEach(category => {
             const score = clampScore(analysis.scores[category.name]);
+            if (category.caption) category.caption.textContent = categoryCaption(category.name, score, Boolean(text(result.targetCareer)));
             animateNumber(category.score, score);
             animateBar(category.bar, score);
         });
         renderTextList(strengthsList, analysis.strengths);
         renderTextList(improvementsList, analysis.priorityImprovements);
-        renderMissingSkills(analysis.verifiedSkillsMissingFromCv);
+        renderMissingSkills(analysis.verifiedSkillsMissingFromCv, result.verifiedSkills);
         renderBulletRewrites(analysis.bulletRewrites);
     }
 
@@ -251,6 +308,14 @@
 
     improveCvButton.addEventListener("click", () => {
         alert("CareerKraft CV Builder is coming next.");
+    });
+
+    downloadReportButton?.addEventListener("click", () => window.print());
+    previousRewriteButton?.addEventListener("click", () => {
+        if (rewriteIndex > 0) { rewriteIndex--; updateRewriteNavigation(); }
+    });
+    nextRewriteButton?.addEventListener("click", () => {
+        if (rewriteIndex < rewriteCards.length - 1) { rewriteIndex++; updateRewriteNavigation(); }
     });
 
     window.addEventListener("pagehide", stopAnimations);
