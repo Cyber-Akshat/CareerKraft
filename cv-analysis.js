@@ -254,4 +254,7 @@ async function analyseCvWithLumia({ cvText, targetCareer, verifiedSkills }, opti
   }
 }
 
-module.exports = { analyseCvWithLumia, validateCvAnalysis };
+module.exports = {
+  analyseCvWithLumia, validateCvAnalysis,
+  cvSourceGrounding: Object.freeze({ paragraph: completeSourceBullet, rewrite: safeBullet, skillAppears: skillAppearsInCv })
+};

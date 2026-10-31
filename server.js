@@ -6,6 +6,8 @@ const express = require('express');
 const multer = require('multer');
 const { MAX_EVIDENCE_FILE_SIZE, inspectEvidenceFile, extractUploadedEvidence, safeFileName } = require('./evidence-files');
 const { analyseCvWithLumia, validateCvAnalysis } = require('./cv-analysis');
+const { generateCvBuildWithLumia, validateCvBuildOutput } = require('./cv-builder');
+const { cvReviewError, parseStoredCv, resolveCvReviewText, applyCvReviewChange, cvSuggestionResponse } = require('./cv-build-review');
 const { createMediaEvidenceProcessor } = require('./media-evidence');
 const { isAllowedEvidenceFilename } = require('./evidence-policy');
 const { rateLimit } = require('express-rate-limit');
@@ -648,6 +650,42 @@ CREATE TABLE IF NOT EXISTS cv_scans (
   created_at INTEGER NOT NULL,
   CONSTRAINT fk_cv_scans_user
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS cv_builds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  cv_scan_id INTEGER NOT NULL,
+  target_career TEXT,
+  original_cv_text TEXT NOT NULL,
+  current_cv_json TEXT NOT NULL CHECK (json_valid(current_cv_json)),
+  status TEXT NOT NULL DEFAULT 'reviewing',
+  total_suggestions INTEGER NOT NULL DEFAULT 0,
+  accepted_count INTEGER NOT NULL DEFAULT 0,
+  rejected_count INTEGER NOT NULL DEFAULT 0,
+  edited_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CONSTRAINT fk_cv_build_user
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cv_build_scan
+    FOREIGN KEY (cv_scan_id) REFERENCES cv_scans(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS cv_build_suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cv_build_id INTEGER NOT NULL,
+  section_name TEXT NOT NULL,
+  suggestion_type TEXT NOT NULL,
+  original_text TEXT,
+  suggested_text TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  evidence_json TEXT CHECK (evidence_json IS NULL OR json_valid(evidence_json)),
+  status TEXT NOT NULL DEFAULT 'pending',
+  final_text TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CONSTRAINT fk_cv_suggestion_build
+    FOREIGN KEY (cv_build_id) REFERENCES cv_builds(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_lumia_conversations_user
   ON lumia_conversations(user_id, updated_at);
@@ -1475,6 +1513,19 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
   /* =========================================
      CV SCANNER
   ========================================= */
+  async function cvProfileContext(userId) {
+    const [career, skills] = await Promise.all([
+      db.prepare('SELECT career_id, title FROM selected_career WHERE user_id = ? LIMIT 1').get(userId),
+      db.prepare(`SELECT skill_name, verified_count FROM user_skills
+        WHERE user_id = ? AND verified_count > 0
+        ORDER BY verified_count DESC, last_verified_at DESC, id DESC`).all(userId)
+    ]);
+    return {
+      targetCareer: career?.title || null,
+      verifiedSkills: skills.map(skill => ({ name: skill.skill_name, verifiedCount: Number(skill.verified_count) }))
+    };
+  }
+
   app.post('/api/cv/scan', async (req, res) => {
     // Resolve the session before accepting any upload bytes or creating files.
     const user = await requireUser(req, res);
@@ -1501,14 +1552,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
         throw invalidUpload("CareerKraft couldn't read the complete text of this CV. Please upload a text-only PDF, DOCX or TXT file with readable text and no more than 20,000 characters.");
       }
 
-      const [selectedCareer, skillRows] = await Promise.all([
-        db.prepare('SELECT career_id, title FROM selected_career WHERE user_id = ? LIMIT 1').get(user.id),
-        db.prepare(`SELECT skill_name, verified_count FROM user_skills
-          WHERE user_id = ? AND verified_count > 0
-          ORDER BY verified_count DESC, last_verified_at DESC, id DESC`).all(user.id)
-      ]);
-      const targetCareer = selectedCareer?.title || null;
-      const verifiedSkills = skillRows.map(skill => ({ name: skill.skill_name, verifiedCount: Number(skill.verified_count) }));
+      const { targetCareer, verifiedSkills } = await cvProfileContext(user.id);
       const rawAnalysis = await (options.analyseCvWithLumia || analyseCvWithLumia)(
         { cvText, targetCareer, verifiedSkills }, { fetch: fetchLumia }
       );
@@ -1538,6 +1582,156 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       }
     }
     res.status(status).json(result);
+  });
+
+  app.post('/api/cv/build', async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const value = req.body?.scanId;
+    const scanId = typeof value === 'number' || (typeof value === 'string' && /^[1-9]\d*$/.test(value.trim()))
+      ? Number(value) : NaN;
+    if (!Number.isSafeInteger(scanId) || scanId <= 0) {
+      return res.status(400).json({ error: 'A valid CV scan is required.' });
+    }
+
+    let transactionStarted = false;
+    try {
+      const scan = await db.prepare(`SELECT id, extracted_text FROM cv_scans
+        WHERE id = ? AND user_id = ? LIMIT 1`).get(scanId, user.id);
+      if (!scan) return res.status(404).json({ error: 'CV scan not found.' });
+      const { targetCareer, verifiedSkills } = await cvProfileContext(user.id);
+      // Model latency must not hold a database transaction or apply any edits.
+      const rawOutput = await (options.generateCvBuildWithLumia || generateCvBuildWithLumia)(
+        { cvText: scan.extracted_text, targetCareer, verifiedSkills }, { fetch: fetchLumia }
+      );
+      const output = validateCvBuildOutput(rawOutput, { cvText: scan.extracted_text, verifiedSkills });
+      const now = Date.now();
+
+      await db.exec('BEGIN');
+      transactionStarted = true;
+      const build = await db.prepare(`INSERT INTO cv_builds (
+        user_id, cv_scan_id, target_career, original_cv_text, current_cv_json, status,
+        total_suggestions, accepted_count, rejected_count, edited_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'reviewing', ?, 0, 0, 0, ?, ?)`).run(
+        user.id, scanId, targetCareer, scan.extracted_text, JSON.stringify(output.structuredCv),
+        output.suggestions.length, now, now
+      );
+      const buildId = Number(build.lastInsertRowid);
+      const saveSuggestion = db.prepare(`INSERT INTO cv_build_suggestions (
+        cv_build_id, section_name, suggestion_type, original_text, suggested_text, reason,
+        evidence_json, status, final_text, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`);
+      const savedSuggestions = [];
+      for (const [index, suggestion] of output.suggestions.entries()) {
+        const savedSuggestion = await saveSuggestion.run(
+          buildId, suggestion.sectionName, suggestion.suggestionType, suggestion.originalText || null,
+          suggestion.suggestedText, suggestion.reason, JSON.stringify(suggestion.evidence), index + 1, now, now
+        );
+        savedSuggestions.push({
+          ...suggestion, id: Number(savedSuggestion.lastInsertRowid),
+          status: 'pending', finalText: null, sortOrder: index + 1
+        });
+      }
+      await db.exec('COMMIT');
+      transactionStarted = false;
+      res.json({
+        success: true, buildId, targetCareer, structuredCv: output.structuredCv,
+        suggestions: savedSuggestions
+      });
+    } catch {
+      if (transactionStarted) {
+        try { await db.exec('ROLLBACK'); }
+        catch { console.error('CV Builder transaction rollback failed.'); }
+      }
+      console.error('CV Builder creation failed.');
+      res.status(500).json({ error: "CareerKraft couldn't prepare your CV improvements right now." });
+    }
+  });
+
+  app.patch('/api/cv/build/:buildId/suggestions/:suggestionId', async (req, res) => {
+    const user = await requireUser(req, res);
+    if (!user) return;
+    const parseId = value => typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : NaN;
+    const buildId = parseId(req.params.buildId);
+    const suggestionId = parseId(req.params.suggestionId);
+    if (!Number.isSafeInteger(buildId) || !Number.isSafeInteger(suggestionId)) {
+      return res.status(400).json({ error: 'Invalid CV Builder request.' });
+    }
+    const status = typeof req.body?.status === 'string' ? req.body.status.trim() : '';
+    if (!['accepted', 'rejected', 'edited'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid suggestion status.' });
+    }
+    if (status !== 'rejected' && (typeof req.body?.finalText !== 'string' || !req.body.finalText.trim())) {
+      return res.status(400).json({ error: 'Final CV text cannot be empty.' });
+    }
+
+    let transactionStarted = false;
+    try {
+      await db.exec('BEGIN IMMEDIATE');
+      transactionStarted = true;
+      const lock = db.dialect === 'mysql' ? ' FOR UPDATE' : '';
+      // Lock the build before reading any suggestion or CV content. Decisions
+      // for separate suggestions in the same build must preserve one another.
+      const build = await db.prepare(`SELECT id, current_cv_json, status FROM cv_builds
+        WHERE id = ? AND user_id = ? LIMIT 1${lock}`).get(buildId, user.id);
+      if (!build) throw cvReviewError('CV build not found.', 404);
+      const suggestion = await db.prepare(`SELECT * FROM cv_build_suggestions
+        WHERE id = ? AND cv_build_id = ? LIMIT 1${lock}`).get(suggestionId, buildId);
+      if (!suggestion) throw cvReviewError('CV suggestion not found.', 404);
+      if (!['reviewing', 'reviewed'].includes(build.status)) throw cvReviewError('This CV build is not open for review.');
+      const resolvedFinalText = resolveCvReviewText(suggestion, status, req.body?.finalText);
+      const retry = suggestion.status === status && (suggestion.final_text || '') === resolvedFinalText;
+      if (suggestion.status !== 'pending' && !retry) {
+        throw cvReviewError('This suggestion has already been reviewed. Please reload the CV Builder.');
+      }
+      let structuredCv = parseStoredCv(build.current_cv_json);
+      const now = Date.now();
+      if (!retry) {
+        if (status !== 'rejected') structuredCv = applyCvReviewChange(structuredCv, suggestion, resolvedFinalText);
+        const saved = await db.prepare(`UPDATE cv_build_suggestions
+          SET status = ?, final_text = ?, updated_at = ?
+          WHERE id = ? AND cv_build_id = ? AND status = 'pending'`).run(
+          status, resolvedFinalText, now, suggestionId, buildId
+        );
+        if (saved.changes !== 1) throw cvReviewError('This suggestion has already been reviewed.');
+      }
+      const counts = await db.prepare(`SELECT COUNT(*) AS total_suggestions,
+        SUM(status = 'accepted') AS accepted_count, SUM(status = 'edited') AS edited_count,
+        SUM(status = 'rejected') AS rejected_count, SUM(status = 'pending') AS pending_count
+        FROM cv_build_suggestions WHERE cv_build_id = ?`).get(buildId);
+      const accepted = Number(counts.accepted_count || 0);
+      const edited = Number(counts.edited_count || 0);
+      const rejected = Number(counts.rejected_count || 0);
+      const pending = Number(counts.pending_count || 0);
+      const total = Number(counts.total_suggestions || 0);
+      if (accepted + edited + rejected + pending !== total) throw new Error('Invalid stored CV decision status.');
+      const buildStatus = pending === 0 ? 'reviewed' : 'reviewing';
+      if (!retry) {
+        await db.prepare(`UPDATE cv_builds SET current_cv_json = ?, total_suggestions = ?,
+          accepted_count = ?, edited_count = ?, rejected_count = ?, status = ?, updated_at = ?
+          WHERE id = ? AND user_id = ?`).run(
+          JSON.stringify(structuredCv), total, accepted, edited, rejected, buildStatus, now, buildId, user.id
+        );
+      }
+      const suggestions = (await db.prepare(`SELECT * FROM cv_build_suggestions
+        WHERE cv_build_id = ? ORDER BY sort_order, id`).all(buildId)).map(cvSuggestionResponse);
+      await db.exec('COMMIT');
+      transactionStarted = false;
+      return res.json({
+        success: true, buildId, suggestion: { id: suggestionId, status, finalText: resolvedFinalText },
+        progress: { accepted, edited, rejected, pending, reviewed: accepted + edited + rejected },
+        buildStatus, structuredCv, suggestions
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        try { await db.exec('ROLLBACK'); }
+        catch { console.error('CV review transaction rollback failed.'); }
+      }
+      if (!error.cvReviewInputError) console.error('CV suggestion update failed.');
+      return res.status(error.cvReviewInputError ? error.status : 500).json({
+        error: error.cvReviewInputError ? error.message : "CareerKraft couldn't save this CV change."
+      });
+    }
   });
 
   app.get('/api/lumia/history', async (req, res) => {
@@ -3216,7 +3410,8 @@ app.post('/api/early-access', async (req, res) => {
   publicFiles.add('dashboard-tour.css');
   [
     'cv-scanner.html', 'cv-scanner.css', 'cv-scanner.js',
-    'cv-results.html', 'cv-results.css', 'cv-results.js'
+    'cv-results.html', 'cv-results.css', 'cv-results.js', 'cv-builder.html', 'cv-builder.css', 'cv-builder-ui.js',
+    'cv-preview.html', 'cv-preview.css', 'cv-preview.js'
   ].forEach(file => publicFiles.add(file));
   app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
   // Keep saved CV links inside the dashboard's shared navigation and theme.

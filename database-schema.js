@@ -88,6 +88,42 @@ const TABLES = [
     PRIMARY KEY (id),
     CONSTRAINT fk_cv_scans_user
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`],
+  ['cv_builds', `
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    cv_scan_id BIGINT UNSIGNED NOT NULL,
+    target_career VARCHAR(255),
+    original_cv_text LONGTEXT NOT NULL,
+    current_cv_json JSON NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'reviewing',
+    total_suggestions INT NOT NULL DEFAULT 0,
+    accepted_count INT NOT NULL DEFAULT 0,
+    rejected_count INT NOT NULL DEFAULT 0,
+    edited_count INT NOT NULL DEFAULT 0,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT fk_cv_build_user
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cv_build_scan
+      FOREIGN KEY (cv_scan_id) REFERENCES cv_scans(id) ON DELETE CASCADE`],
+  ['cv_build_suggestions', `
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    cv_build_id BIGINT UNSIGNED NOT NULL,
+    section_name VARCHAR(100) NOT NULL,
+    suggestion_type VARCHAR(100) NOT NULL,
+    original_text TEXT,
+    suggested_text TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    evidence_json JSON,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    final_text TEXT,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT fk_cv_suggestion_build
+      FOREIGN KEY (cv_build_id) REFERENCES cv_builds(id) ON DELETE CASCADE`],
   ['evidence_submissions', `
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL,
     roadmap_step_id BIGINT UNSIGNED NOT NULL, submission_type VARCHAR(32) NOT NULL DEFAULT 'text',

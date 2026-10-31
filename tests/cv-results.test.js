@@ -7,6 +7,15 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const root = path.join(__dirname, '..');
 const html = readFileSync(path.join(root, 'cv-results.html'), 'utf8');
 const storageKey = 'careerkraft-cv-scan-result';
+const buildStorageKey = 'careerkraft-cv-build';
+const buildResult = () => ({
+  success: true, buildId: 17, targetCareer: 'Cyber Security Analyst',
+  structuredCv: { summary: 'A student exploring cybersecurity.', education: [], experience: [], projects: [], skills: [] },
+  suggestions: []
+});
+const response = (value = buildResult(), ok = true) => ({ ok, json: async () => value });
+const settled = () => new Promise(resolve => setImmediate(resolve));
+const buttonLabel = element => element.textContent.replace(/\s+/g, ' ').trim();
 const result = () => ({
   success: true, scanId: 4, fileName: 'student-cv.txt', targetCareer: 'Cyber Security Analyst',
   analysis: {
@@ -22,14 +31,20 @@ const result = () => ({
   }
 });
 
-function load(t, saved = result(), { storageError = false } = {}) {
+function load(t, saved = result(), { storageError = false, dashboard = false } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', error => errors.push(error));
   const dom = new JSDOM(html, {
-    url: 'http://localhost:3000/cv-results.html', runScripts: 'outside-only', virtualConsole
+    url: `http://localhost:3000/${dashboard ? 'dashboard.html#cv-results' : 'cv-results.html'}`,
+    runScripts: 'outside-only', virtualConsole
   });
   const { window } = dom;
+  if (dashboard) {
+    const view = window.document.createElement('div');
+    view.id = 'cv-results-view';
+    window.document.body.appendChild(view);
+  }
   const storage = window.sessionStorage;
   if (saved !== null) storage.setItem(storageKey, typeof saved === 'string' ? saved : JSON.stringify(saved));
   if (storageError) Object.defineProperty(window, 'sessionStorage', {
@@ -45,6 +60,7 @@ function load(t, saved = result(), { storageError = false } = {}) {
   window.cancelAnimationFrame = id => frames.delete(id);
   window.alert = message => alerts.push(message);
   window.print = () => { printCalls++; };
+  window.fetch = async () => response();
   assert.doesNotThrow(() => window.eval(readFileSync(path.join(root, 'cv-results.js'), 'utf8')));
   t.after(() => window.close());
   function flush() {
@@ -179,7 +195,7 @@ test('missing, invalid and inaccessible CV cache redirects without fabricating a
   assert.equal(blocked.frames.size, 0);
 });
 
-test('CV results use readable fallbacks and keep the builder action as an explicit placeholder', t => {
+test('CV results use readable fallbacks and scan another clears the saved scan', t => {
   const value = result();
   value.targetCareer = null;
   value.analysis.careerAlignmentSummary = '';
@@ -188,13 +204,243 @@ test('CV results use readable fallbacks and keep the builder action as an explic
   assert.equal(h.element('targetCareer').textContent, 'No target career selected');
   assert.equal(h.element('careerAlignmentSummary').textContent,
     'Lumia has reviewed the structure, clarity, evidence and career relevance of your CV.');
-  h.element('improveCvButton').click();
-  assert.deepEqual(h.alerts, ['CareerKraft CV Builder is coming next.']);
-  assert.equal(h.navigations().length, 0);
   assert.ok(h.storage.getItem(storageKey));
   h.element('scanAnotherButton').click();
   assert.equal(h.storage.getItem(storageKey), null);
   assert.equal(h.navigations().length, 1);
+});
+
+test('Improve my CV builds from the fresh saved scan, blocks duplicate requests and saves the response', async t => {
+  const h = load(t);
+  h.flush();
+  const fresh = result();
+  fresh.scanId = 12;
+  h.storage.setItem(storageKey, JSON.stringify(fresh));
+  const calls = [];
+  let finishBuild;
+  h.window.fetch = (url, options) => {
+    calls.push({ url, options });
+    return new Promise(resolve => { finishBuild = resolve; });
+  };
+  const button = h.element('improveCvButton');
+  button.click();
+  button.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(calls.length, 1, 'Only one build can be requested at a time');
+  assert.equal(calls[0].url, '/api/cv/build');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.credentials, 'same-origin');
+  assert.equal(new Headers(calls[0].options.headers).get('Content-Type'), 'application/json');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { scanId: 12 });
+  assert.equal(button.disabled, true);
+  assert.match(buttonLabel(button), /Preparing.*Lumia/i);
+  assert.equal(h.storage.getItem(buildStorageKey), null);
+  assert.equal(h.navigations().length, 0);
+  h.restore();
+  h.flush();
+  button.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(calls.length, 1, 'History restoration cannot duplicate a pending build');
+  assert.equal(button.disabled, true);
+  const built = buildResult();
+  finishBuild(response(built));
+  await settled();
+  const saved = JSON.parse(h.storage.getItem(buildStorageKey));
+  assert.equal(saved.buildId, built.buildId);
+  assert.deepEqual(saved.structuredCv, built.structuredCv);
+  assert.deepEqual(saved.suggestions, built.suggestions);
+  assert.equal(saved.targetCareer, built.targetCareer);
+  assert.equal(h.navigations().length, 1);
+  assert.deepEqual(h.alerts, []);
+});
+
+test('starting a new scan cancels the old builder redirect and cannot disturb a newer pending build', async t => {
+  for (const oldFails of [false, true]) {
+    const h = load(t, result(), { dashboard: true });
+    h.flush();
+    const button = h.element('improveCvButton');
+    const originalLabel = buttonLabel(button);
+    const requests = [];
+    h.window.fetch = (url, options) => new Promise((resolve, reject) => {
+      requests.push({ options, resolve, reject });
+    });
+    button.click();
+    assert.equal(button.disabled, true);
+    h.element('scanAnotherButton').click();
+    assert.equal(h.window.location.hash, '#cv-scanner');
+    assert.equal(h.storage.getItem(storageKey), null);
+    assert.equal(button.disabled, false);
+    assert.equal(buttonLabel(button), originalLabel);
+
+    const fresh = result();
+    fresh.scanId = 12;
+    h.storage.setItem(storageKey, JSON.stringify(fresh));
+    h.window.location.hash = '#cv-results';
+    h.window.dispatchEvent(new h.window.CustomEvent('careerkraft:dashboard-view', { detail: { view: 'cv-results' } }));
+    button.click();
+    assert.deepEqual(requests.map(item => JSON.parse(item.options.body).scanId), [4, 12]);
+    if (oldFails) requests[0].reject(new Error('Old request failed'));
+    else requests[0].resolve(response({ ...buildResult(), buildId: 100 }));
+    await settled();
+    assert.equal(button.disabled, true, 'An obsolete response cannot reset the newer pending action');
+    assert.equal(h.storage.getItem(buildStorageKey), null);
+    assert.equal(h.navigations().length, 0);
+    assert.equal(h.window.location.hash, '#cv-results');
+    assert.deepEqual(h.alerts, []);
+    requests[1].resolve(response({ ...buildResult(), buildId: 101 }));
+    await settled();
+    assert.equal(JSON.parse(h.storage.getItem(buildStorageKey)).buildId, 101);
+    assert.equal(h.navigations().length, 1);
+  }
+});
+
+test('leaving CV results discards a build whose response body is still being read', async t => {
+  const h = load(t, result(), { dashboard: true });
+  h.flush();
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  let finishBody;
+  h.window.fetch = async () => ({ ok: true, json: () => new Promise(resolve => { finishBody = resolve; }) });
+  button.click();
+  await settled();
+  assert.equal(typeof finishBody, 'function');
+  h.window.location.hash = '#skills';
+  h.window.dispatchEvent(new h.window.CustomEvent('careerkraft:dashboard-view', { detail: { view: 'skills' } }));
+  assert.equal(button.disabled, false);
+  assert.equal(buttonLabel(button), originalLabel);
+  finishBody(buildResult());
+  await settled();
+  assert.equal(h.window.location.hash, '#skills');
+  assert.equal(h.storage.getItem(buildStorageKey), null);
+  assert.equal(h.navigations().length, 0);
+  assert.deepEqual(h.alerts, []);
+});
+
+test('a changed scan cache makes a pending build obsolete even without a view event', async t => {
+  const h = load(t);
+  h.flush();
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  let finishBuild;
+  h.window.fetch = () => new Promise(resolve => { finishBuild = resolve; });
+  button.click();
+  const fresh = result();
+  fresh.scanId = 12;
+  h.storage.setItem(storageKey, JSON.stringify(fresh));
+  finishBuild(response());
+  await settled();
+  assert.equal(button.disabled, false);
+  assert.equal(buttonLabel(button), originalLabel);
+  assert.equal(h.storage.getItem(buildStorageKey), null);
+  assert.equal(h.navigations().length, 0);
+  assert.deepEqual(h.alerts, []);
+});
+
+test('CV build request failures restore the action and never save or navigate to a stale build', async t => {
+  const h = load(t);
+  h.flush();
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  const failures = [
+    async () => { throw new Error('Network unavailable'); },
+    async () => response({ error: 'This scan could not be used.' }, false),
+    async () => ({ ok: true, json: async () => { throw new SyntaxError('Not JSON'); } }),
+    async () => response(null),
+    async () => response({}),
+    async () => response({ ...buildResult(), success: false }),
+    async () => response({ ...buildResult(), buildId: 0 }),
+    async () => response({ ...buildResult(), structuredCv: [] }),
+    async () => response({ ...buildResult(), suggestions: 'invalid' })
+  ];
+  for (const fetchImpl of failures) {
+    h.window.fetch = fetchImpl;
+    const previousAlerts = h.alerts.length;
+    button.click();
+    await settled();
+    assert.equal(button.disabled, false);
+    assert.equal(buttonLabel(button), originalLabel);
+    assert.equal(h.alerts.length, previousAlerts + 1);
+    assert.equal(typeof h.alerts.at(-1), 'string');
+    assert.ok(h.alerts.at(-1).trim());
+    assert.equal(h.storage.getItem(buildStorageKey), null);
+    assert.equal(h.navigations().length, 0);
+  }
+});
+
+test('CV builder refuses missing or malformed cached scan IDs without contacting the API', async t => {
+  const h = load(t);
+  h.flush();
+  let requests = 0;
+  h.window.fetch = async () => { requests++; return response(); };
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  for (const saved of [null, '{not JSON}', 'null', '[]', '{}',
+    JSON.stringify({ ...result(), scanId: 0 }), JSON.stringify({ ...result(), scanId: -1 }),
+    JSON.stringify({ ...result(), scanId: 1.5 }), JSON.stringify({ ...result(), scanId: '4' })]) {
+    if (saved === null) h.storage.removeItem(storageKey);
+    else h.storage.setItem(storageKey, saved);
+    const previousAlerts = h.alerts.length;
+    button.click();
+    await settled();
+    assert.equal(requests, 0);
+    assert.equal(button.disabled, false);
+    assert.equal(buttonLabel(button), originalLabel);
+    assert.equal(h.alerts.length, previousAlerts + 1);
+    assert.equal(h.storage.getItem(buildStorageKey), null);
+    assert.equal(h.navigations().length, 0);
+  }
+});
+
+test('CV build storage failures restore the action without redirecting to an unsaved result', async t => {
+  const h = load(t);
+  h.flush();
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  t.mock.method(h.window.Storage.prototype, 'setItem', () => { throw new Error('Storage unavailable'); });
+  button.click();
+  await settled();
+  assert.equal(button.disabled, false);
+  assert.equal(buttonLabel(button), originalLabel);
+  assert.equal(h.alerts.length, 1);
+  assert.equal(h.storage.getItem(buildStorageKey), null);
+  assert.equal(h.navigations().length, 0);
+});
+
+test('CV builder handles unavailable scan storage without sending a request', async t => {
+  const h = load(t);
+  h.flush();
+  let requests = 0;
+  h.window.fetch = async () => { requests++; return response(); };
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  t.mock.method(h.window.Storage.prototype, 'getItem', () => { throw new Error('Storage unavailable'); });
+  button.click();
+  await settled();
+  assert.equal(requests, 0);
+  assert.equal(button.disabled, false);
+  assert.equal(buttonLabel(button), originalLabel);
+  assert.equal(h.alerts.length, 1);
+  assert.equal(h.navigations().length, 0);
+});
+
+test('restoring the completed builder action from browser history permits a new build', async t => {
+  const h = load(t);
+  h.flush();
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  let requests = 0;
+  h.window.fetch = async () => { requests++; return response(); };
+  button.click();
+  await settled();
+  assert.equal(requests, 1);
+  assert.equal(h.navigations().length, 1);
+  h.window.dispatchEvent(new h.window.PageTransitionEvent('pagehide', { persisted: true }));
+  h.restore();
+  h.flush();
+  assert.equal(button.disabled, false);
+  assert.equal(buttonLabel(button), originalLabel);
+  button.click();
+  await settled();
+  assert.equal(requests, 2);
+  assert.equal(h.navigations().length, 2);
 });
 
 test('restoring CV results from browser history refreshes the cache without duplicate cards', t => {

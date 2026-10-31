@@ -85,6 +85,31 @@ test('signed-in widget restores server history and shows four prompts', async t 
   assert.deepEqual(ui.calls.map(call => call.endpoint), ['lumia/history']);
 });
 
+test('a Lumia navigation link opens the signed-in companion without sending a message or starting a new chat', async t => {
+  const ui = await load(t, { url: 'http://localhost/dashboard.html#lumia' });
+  assert.equal(ui.el('lumia-panel').hidden, false);
+  assert.equal(ui.el('lumia-launcher').getAttribute('aria-expanded'), 'true');
+  assert.equal(ui.el('lumia-input').value, '');
+  assert.deepEqual(ui.calls.map(call => call.endpoint), ['lumia/history']);
+  assert.deepEqual(ui.bubbles(), []);
+});
+
+test('changing to the Lumia fragment opens the existing panel while other dashboard destinations do not', async t => {
+  const ui = await load(t);
+  ui.w.location.hash = '#skills';
+  ui.w.dispatchEvent(new ui.w.HashChangeEvent('hashchange'));
+  assert.equal(ui.el('lumia-panel').hidden, true);
+  ui.w.location.hash = '#lumia';
+  ui.w.dispatchEvent(new ui.w.HashChangeEvent('hashchange'));
+  assert.equal(ui.el('lumia-panel').hidden, false);
+  assert.equal(ui.d.querySelectorAll('#lumia-widget').length, 1);
+  ui.el('lumia-close').click();
+  ui.w.location.hash = '#roadmap';
+  ui.w.dispatchEvent(new ui.w.HashChangeEvent('hashchange'));
+  assert.equal(ui.el('lumia-panel').hidden, true);
+  assert.deepEqual(ui.calls.map(call => call.endpoint), ['lumia/history']);
+});
+
 test('widget is absent when authentication is unavailable or signed out', async t => {
   for (const options of [
     { noAuth: true },
@@ -92,7 +117,7 @@ test('widget is absent when authentication is unavailable or signed out', async 
     { getSession: async () => ({ error: { message: 'Expired' }, data: { session: { user: { id: 1 } } } }) },
     { getSession: async () => { throw new Error('Offline'); } }
   ]) {
-    const ui = await load(t, options);
+    const ui = await load(t, { ...options, url: 'http://localhost/dashboard.html#lumia' });
     assert.equal(ui.el('lumia-widget'), null);
     assert.equal(ui.calls.length, 0);
   }

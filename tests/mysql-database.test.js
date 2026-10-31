@@ -125,7 +125,7 @@ test('MySQL creates the explicit schema and preserves statement result values', 
   const db = createDatabase({ mysqlPool: pool });
   try {
     await db.ready;
-    assert.equal(MYSQL_TABLES.length, 27);
+    assert.equal(MYSQL_TABLES.length, 29);
     assert.equal(pool.calls.length, MYSQL_SCHEMA.length + 1);
     assert.match(pool.calls.at(-1).sql, /INSERT INTO auth_rate_limit_locks/);
     assert.ok(MYSQL_SCHEMA.every(sql => sql.includes('ENGINE=InnoDB') && sql.includes('utf8mb4_bin')));

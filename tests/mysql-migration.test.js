@@ -37,6 +37,10 @@ function mysqlDestination({ nonempty = false, mismatch = false, requiredColumn =
     roadmaps: ['id', 'user_id', 'career_id', 'career_title', 'status', 'created_at', 'updated_at'],
     cv_scans: ['id', 'user_id', 'file_name', 'extracted_text', 'overall_score', 'structure_score',
       'clarity_score', 'evidence_score', 'relevance_score', 'analysis_json', 'created_at'],
+    cv_builds: ['id', 'user_id', 'cv_scan_id', 'target_career', 'original_cv_text', 'current_cv_json',
+      'status', 'total_suggestions', 'accepted_count', 'rejected_count', 'edited_count', 'created_at', 'updated_at'],
+    cv_build_suggestions: ['id', 'cv_build_id', 'section_name', 'suggestion_type', 'original_text',
+      'suggested_text', 'reason', 'evidence_json', 'status', 'final_text', 'sort_order', 'created_at', 'updated_at'],
     account_settings: ['user_id', 'theme', 'reduced_motion', 'updated_at', 'preferences_saved']
   };
   let snapshot;
@@ -131,6 +135,49 @@ test('migration preserves CV scan IDs, scores, extracted text and analysis JSON'
     id: 12, user_id: 7, file_name: null, extracted_text: 'Education\nComputer Science',
     overall_score: 78, structure_score: 85, clarity_score: 80, evidence_score: 65,
     relevance_score: 82, analysis_json: analysis, created_at: 1792929600123
+  }]);
+  assert.deepEqual(readFileSync(sourcePath), before);
+});
+
+test('migration preserves CV builds and their linked suggestions without changing the source', async t => {
+  const original = 'Built a Flask bot detector website.';
+  const currentCv = JSON.stringify({ sections: [{ name: 'Projects', text: original }] });
+  const evidence = JSON.stringify({ skills: ['Flask'], source: 'CV' });
+  const sourcePath = sqliteFixture(t, db => {
+    db.exec(`
+      CREATE TABLE cv_scans (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id),
+        extracted_text TEXT, analysis_json TEXT, created_at INTEGER);
+      CREATE TABLE cv_builds (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id),
+        cv_scan_id INTEGER REFERENCES cv_scans(id), target_career TEXT, original_cv_text TEXT,
+        current_cv_json TEXT, status TEXT, total_suggestions INTEGER, accepted_count INTEGER,
+        rejected_count INTEGER, edited_count INTEGER, created_at INTEGER, updated_at INTEGER);
+      CREATE TABLE cv_build_suggestions (id INTEGER PRIMARY KEY, cv_build_id INTEGER REFERENCES cv_builds(id),
+        section_name TEXT, suggestion_type TEXT, original_text TEXT, suggested_text TEXT, reason TEXT,
+        evidence_json TEXT, status TEXT, final_text TEXT, sort_order INTEGER, created_at INTEGER, updated_at INTEGER);
+    `);
+    db.prepare('INSERT INTO cv_scans VALUES (?,?,?,?,?)').run(12, 7, original, '{}', 1792929600123);
+    db.prepare('INSERT INTO cv_builds VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(17, 7, 12, 'Cyber Security Analyst', original, currentCv, 'reviewing', 1, 0, 0, 0, 1792929600123, 1792929600456);
+    db.prepare('INSERT INTO cv_build_suggestions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(23, 17, 'Projects', 'clarify_project_description', original, original,
+        'Keep the project description factual.', evidence, 'pending', null, 0, 1792929600123, 1792929600456);
+  });
+  const before = readFileSync(sourcePath);
+  const target = mysqlDestination();
+  const result = await migrateSqliteToMysql({ sourcePath, createTarget: () => target });
+  assert.equal(result.counts.cv_builds, 1);
+  assert.equal(result.counts.cv_build_suggestions, 1);
+  assert.deepEqual(target.rows.cv_builds, [{
+    id: 17, user_id: 7, cv_scan_id: 12, target_career: 'Cyber Security Analyst',
+    original_cv_text: original, current_cv_json: currentCv, status: 'reviewing',
+    total_suggestions: 1, accepted_count: 0, rejected_count: 0, edited_count: 0,
+    created_at: 1792929600123, updated_at: 1792929600456
+  }]);
+  assert.deepEqual(target.rows.cv_build_suggestions, [{
+    id: 23, cv_build_id: 17, section_name: 'Projects', suggestion_type: 'clarify_project_description',
+    original_text: original, suggested_text: original, reason: 'Keep the project description factual.',
+    evidence_json: evidence, status: 'pending', final_text: null, sort_order: 0,
+    created_at: 1792929600123, updated_at: 1792929600456
   }]);
   assert.deepEqual(readFileSync(sourcePath), before);
 });

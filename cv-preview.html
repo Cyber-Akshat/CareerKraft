@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Improved CV | CareerKraft</title>
+
+    <script src="/accessibility.js"></script>
+    <script>
+        try {
+            document.documentElement.dataset.theme =
+                localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+        } catch {
+            document.documentElement.dataset.theme = "light";
+        }
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="stylesheet" href="/dashboard.css" />
+    <link rel="stylesheet" href="cv-preview.css" />
+</head>
+<body class="cv-preview-app">
+
+<div class="app-shell dashboard-app">
+
+    <!-- The preview shares the dashboard's original logo and navigation. -->
+    <aside class="sidebar dashboard-sidebar">
+        <a class="brand dashboard-brand" href="/dashboard.html">
+            <div class="dashboard-logo">
+                <img src="/assets/logo.png" alt="" width="44" height="44" />
+            </div>
+            <span>CareerKraft</span>
+        </a>
+
+        <span class="sidebar-label">WORKSPACE</span>
+        <nav class="sidebar-nav dashboard-navigation" aria-label="Dashboard navigation">
+            <a href="/dashboard.html" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#9707;</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="/dashboard.html#roadmap" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#9673;</span>
+                <span>My roadmap</span>
+            </a>
+            <a href="/career.html" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#8599;</span>
+                <span>Explore career</span>
+            </a>
+            <a href="/dashboard.html#skills" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#10022;</span>
+                <span>Skills</span>
+            </a>
+            <a href="#cvDocument" class="nav-item dashboard-nav-item active" aria-current="page">
+                <span class="nav-icon" aria-hidden="true">&#9636;</span>
+                <span>CV Builder</span>
+            </a>
+        </nav>
+
+        <div class="dashboard-sidebar-bottom">
+            <a href="/settings.html" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#9881;</span>
+                <span>Account settings</span>
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content dashboard-main">
+
+        <!-- FINAL PREVIEW ACTIONS -->
+        <header class="topbar dashboard-topbar">
+            <div>
+                <p class="eyebrow" id="previewEyebrow">CV Builder preview</p>
+                <h1>Your improved CV</h1>
+                <p class="topbar-description">
+                    Review the final version before exporting or making more changes.
+                </p>
+            </div>
+            <div class="topbar-actions">
+                <button type="button" class="secondary-button" id="backToBuilderButton">
+                    Back to Builder
+                </button>
+                <button type="button" class="primary-button" id="downloadButton"
+                        title="PDF download is coming soon" disabled>
+                    Download CV
+                </button>
+            </div>
+        </header>
+
+        <section class="preview-page" aria-label="Final CV preview">
+            <!-- The preview controller will confirm whether every suggestion
+                 was reviewed; Finish also permits leaving suggestions pending. -->
+            <div class="completion-banner">
+                <div class="completion-icon" aria-hidden="true">&#10003;</div>
+                <div>
+                    <span class="completion-label" id="completionLabel">Your CV preview</span>
+                    <h2 id="completionHeading">Your CV is ready for a final check.</h2>
+                    <p id="completionDescription">
+                        Only improvements you accepted or edited are included in this version.
+                    </p>
+                </div>
+            </div>
+
+            <div class="preview-layout">
+
+                <!-- FINAL CV DOCUMENT -->
+                <section class="document-area" aria-label="Improved CV document">
+                    <div class="document-toolbar">
+                        <div>
+                            <span class="toolbar-label">Final CV</span>
+                            <strong>Preview</strong>
+                        </div>
+                        <button type="button" class="secondary-button small" id="printButton" disabled>
+                            Print preview
+                        </button>
+                    </div>
+
+                    <article class="cv-document" id="cvDocument" aria-label="Your final CV">
+                        <header class="cv-header">
+                            <h1 id="cvName">Your Name</h1>
+                            <p class="cv-headline" id="cvHeadline"></p>
+                            <div class="cv-contact" id="cvContact"></div>
+                        </header>
+
+                        <section class="cv-section" id="profileSection" aria-labelledby="profileHeading">
+                            <h2 id="profileHeading">Profile</h2>
+                            <div id="cvProfile"></div>
+                        </section>
+                        <section class="cv-section" id="educationSection" aria-labelledby="educationHeading">
+                            <h2 id="educationHeading">Education</h2>
+                            <div id="cvEducation"></div>
+                        </section>
+                        <section class="cv-section" id="experienceSection" aria-labelledby="experienceHeading">
+                            <h2 id="experienceHeading">Experience</h2>
+                            <div id="cvExperience"></div>
+                        </section>
+                        <section class="cv-section" id="projectsSection" aria-labelledby="projectsHeading">
+                            <h2 id="projectsHeading">Projects</h2>
+                            <div id="cvProjects"></div>
+                        </section>
+                        <section class="cv-section" id="skillsSection" aria-labelledby="skillsHeading">
+                            <h2 id="skillsHeading">Skills</h2>
+                            <div id="cvSkills"></div>
+                        </section>
+                        <section class="cv-section" id="certificationsSection" aria-labelledby="certificationsHeading">
+                            <h2 id="certificationsHeading">Certifications</h2>
+                            <div id="cvCertifications"></div>
+                        </section>
+                    </article>
+                </section>
+
+                <!-- REVIEW SUMMARY AND NEXT STEPS -->
+                <aside class="summary-panel" aria-label="CV improvement summary">
+                    <div class="summary-card">
+                        <div class="summary-header">
+                            <div class="lumia-icon" aria-hidden="true">&#10022;</div>
+                            <div>
+                                <span>Lumia</span>
+                                <strong>CV improvement summary</strong>
+                            </div>
+                        </div>
+
+                        <div class="summary-stat-grid">
+                            <div class="summary-stat">
+                                <strong id="acceptedTotal">0</strong>
+                                <span>Accepted</span>
+                            </div>
+                            <div class="summary-stat">
+                                <strong id="editedTotal">0</strong>
+                                <span>Edited</span>
+                            </div>
+                            <div class="summary-stat">
+                                <strong id="rejectedTotal">0</strong>
+                                <span>Rejected</span>
+                            </div>
+                        </div>
+
+                        <div class="target-career-card">
+                            <span>Target career</span>
+                            <strong id="targetCareer">Not selected</strong>
+                        </div>
+                        <div class="final-check">
+                            <h3>Before you apply</h3>
+                            <p>Read your CV once more and make sure all dates,
+                               contact details and factual claims are correct.</p>
+                        </div>
+                    </div>
+
+                    <div class="next-actions-card">
+                        <span class="next-label">What's next?</span>
+                        <h3>Keep improving</h3>
+                        <button type="button" class="next-action" id="scanAnotherButton">
+                            <span aria-hidden="true">&#9636;</span>
+                            <span>
+                                <strong>Scan another CV</strong>
+                                <small>Analyse a new version</small>
+                            </span>
+                            <span aria-hidden="true">&#8594;</span>
+                        </button>
+                        <button type="button" class="next-action" id="practiceButton">
+                            <span aria-hidden="true">&#10022;</span>
+                            <span>
+                                <strong>Practise with Lumia</strong>
+                                <small>Prepare to explain your experience</small>
+                            </span>
+                            <span aria-hidden="true">&#8594;</span>
+                        </button>
+                    </div>
+                </aside>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="cv-preview.js" defer></script>
+
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CV Builder | CareerKraft</title>
+
+    <script src="/accessibility.js"></script>
+    <script>
+        try {
+            document.documentElement.dataset.theme =
+                localStorage.getItem("careerkraft-theme") === "dark" ? "dark" : "light";
+        } catch {
+            document.documentElement.dataset.theme = "light";
+        }
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <link rel="stylesheet" href="/dashboard.css" />
+    <link rel="stylesheet" href="cv-builder.css" />
+</head>
+<body class="cv-builder-app">
+
+<div class="app-shell dashboard-app">
+
+    <!-- SIDEBAR: use the dashboard's existing navigation and original logo. -->
+    <aside class="sidebar dashboard-sidebar">
+        <a class="brand dashboard-brand" href="/dashboard.html">
+            <div class="dashboard-logo">
+                <img src="/assets/logo.png" alt="" width="44" height="44" />
+            </div>
+            <span>CareerKraft</span>
+        </a>
+
+        <span class="sidebar-label">WORKSPACE</span>
+        <nav class="sidebar-nav dashboard-navigation" aria-label="Dashboard navigation">
+            <a href="/dashboard.html" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#9707;</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="/dashboard.html#roadmap" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#9673;</span>
+                <span>My roadmap</span>
+            </a>
+            <a href="/career.html" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#8599;</span>
+                <span>Explore career</span>
+            </a>
+            <a href="/dashboard.html#skills" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#10022;</span>
+                <span>Skills</span>
+            </a>
+            <a href="#cvDocument" class="nav-item dashboard-nav-item active" aria-current="page">
+                <span class="nav-icon" aria-hidden="true">&#9636;</span>
+                <span>CV Builder</span>
+            </a>
+        </nav>
+
+        <div class="dashboard-sidebar-bottom">
+            <a href="/settings.html" class="nav-item dashboard-nav-item">
+                <span class="nav-icon" aria-hidden="true">&#9881;</span>
+                <span>Account settings</span>
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content dashboard-main">
+
+        <!-- TOPBAR -->
+        <header class="topbar dashboard-topbar">
+            <div>
+                <p class="eyebrow">Lumia CV Builder</p>
+                <h1>Review your improvements</h1>
+            </div>
+            <div class="topbar-actions">
+                <a class="secondary-button" id="backToResultsButton" href="/dashboard.html#cv-results">
+                    Back to results
+                </a>
+                <button type="button" class="primary-button" id="finishButton">Finish CV</button>
+            </div>
+        </header>
+
+        <section class="builder-page" aria-label="CV improvement review">
+
+            <!-- PROGRESS HEADER -->
+            <div class="builder-progress">
+                <div>
+                    <span class="progress-label">Reviewing suggestions</span>
+                    <strong id="suggestionProgressText" role="status" aria-atomic="true">0 of 0</strong>
+                </div>
+                <div class="progress-track" role="progressbar" aria-label="Suggestions reviewed"
+                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress-fill" id="suggestionProgressFill"></div>
+                </div>
+                <div class="progress-stats">
+                    <span><strong id="acceptedCount">0</strong> accepted</span>
+                    <span><strong id="editedCount">0</strong> edited</span>
+                    <span><strong id="rejectedCount">0</strong> rejected</span>
+                </div>
+            </div>
+
+            <div class="builder-grid">
+
+                <!-- CV PREVIEW -->
+                <div class="cv-panel">
+                    <div class="cv-toolbar">
+                        <div>
+                            <span class="toolbar-label">Your CV</span>
+                            <strong>Live preview</strong>
+                        </div>
+                        <div class="suggestion-nav" aria-label="Suggestion navigation">
+                            <button type="button" id="previousSuggestionButton" class="icon-button"
+                                    aria-label="Previous suggestion">&#8592;</button>
+                            <span id="suggestionCounter">0 / 0</span>
+                            <button type="button" id="nextSuggestionButton" class="icon-button"
+                                    aria-label="Next suggestion">&#8594;</button>
+                        </div>
+                    </div>
+
+                    <article class="cv-document" id="cvDocument" aria-label="CV live preview">
+                        <header class="cv-header">
+                            <h1 id="cvName">Your Name</h1>
+                            <p class="cv-headline" id="cvHeadline"></p>
+                            <div class="cv-contact" id="cvContact"></div>
+                        </header>
+
+                        <section class="cv-section" data-section="profile" aria-labelledby="cvProfileHeading">
+                            <h2 id="cvProfileHeading">Profile</h2>
+                            <div class="cv-editable-content" id="cvProfile"></div>
+                        </section>
+                        <section class="cv-section" data-section="education" aria-labelledby="cvEducationHeading">
+                            <h2 id="cvEducationHeading">Education</h2>
+                            <div class="cv-editable-content" id="cvEducation"></div>
+                        </section>
+                        <section class="cv-section" data-section="experience" aria-labelledby="cvExperienceHeading">
+                            <h2 id="cvExperienceHeading">Experience</h2>
+                            <div class="cv-editable-content" id="cvExperience"></div>
+                        </section>
+                        <section class="cv-section" data-section="projects" aria-labelledby="cvProjectsHeading">
+                            <h2 id="cvProjectsHeading">Projects</h2>
+                            <div class="cv-editable-content" id="cvProjects"></div>
+                        </section>
+                        <section class="cv-section" data-section="skills" aria-labelledby="cvSkillsHeading">
+                            <h2 id="cvSkillsHeading">Skills</h2>
+                            <div class="cv-editable-content" id="cvSkills"></div>
+                        </section>
+                        <section class="cv-section" data-section="certifications" aria-labelledby="cvCertificationsHeading">
+                            <h2 id="cvCertificationsHeading">Certifications</h2>
+                            <div class="cv-editable-content" id="cvCertifications"></div>
+                        </section>
+                    </article>
+                </div>
+
+                <!-- CURRENT SUGGESTION -->
+                <aside class="suggestion-panel" aria-label="Current Lumia suggestion">
+                    <div class="suggestion-card">
+                        <div class="suggestion-header">
+                            <div class="lumia-badge">
+                                <span class="builder-lumia-avatar" aria-hidden="true">
+                                    <span class="level-lumia-orb">
+                                        <span class="level-lumia-ring ring-one"></span>
+                                        <span class="level-lumia-ring ring-two"></span>
+                                        <span class="level-lumia-ring ring-three"></span>
+                                        <span class="level-lumia-core">&#10022;</span>
+                                    </span>
+                                </span>
+                                Lumia suggestion
+                            </div>
+                            <span class="suggestion-type" id="suggestionType">Improvement</span>
+                        </div>
+
+                        <div class="suggestion-section-name">
+                            <span>Section</span>
+                            <strong id="suggestionSection"></strong>
+                        </div>
+
+                        <div class="comparison-block original-block">
+                            <span class="comparison-label">Original</span>
+                            <p id="originalText"></p>
+                        </div>
+                        <div class="comparison-block suggestion-block">
+                            <span class="comparison-label purple">Lumia's suggestion</span>
+                            <p id="suggestedText"></p>
+                        </div>
+
+                        <div class="why-card">
+                            <div class="why-heading"><span aria-hidden="true">&#10022;</span> Why Lumia changed this</div>
+                            <p id="suggestionReason"></p>
+                        </div>
+                        <div class="evidence-card" id="evidenceCard">
+                            <span class="evidence-title">Based on your evidence</span>
+                            <div class="evidence-chips" id="evidenceChips"></div>
+                        </div>
+
+                        <!-- EDIT MODE -->
+                        <div class="edit-area hidden" id="editArea" hidden>
+                            <label for="editSuggestionInput">Edit Lumia's suggestion</label>
+                            <textarea id="editSuggestionInput" rows="6"></textarea>
+                            <div class="edit-actions">
+                                <button type="button" class="secondary-button" id="cancelEditButton">Cancel</button>
+                                <button type="button" class="primary-button" id="saveEditButton">Save edit</button>
+                            </div>
+                        </div>
+
+                        <div class="suggestion-actions" id="suggestionActions">
+                            <button type="button" class="accept-button" id="acceptButton">
+                                <span aria-hidden="true">&#10003;</span> Accept
+                            </button>
+                            <button type="button" class="edit-button" id="editButton">
+                                <span aria-hidden="true">&#9998;</span> Edit
+                            </button>
+                            <button type="button" class="reject-button" id="rejectButton">
+                                <span aria-hidden="true">&#215;</span> Reject
+                            </button>
+                        </div>
+                        <div class="decision-state hidden" id="decisionState" role="status" aria-atomic="true" hidden></div>
+                    </div>
+
+                    <div class="guidance-card">
+                        <span class="guidance-icon" aria-hidden="true">&#9671;</span>
+                        <div>
+                            <strong>You're in control</strong>
+                            <p>Lumia never changes your CV without your approval. Review every suggestion
+                               before it becomes part of your final CV.</p>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="cv-builder-ui.js" defer></script>
+
+</body>
+</html>

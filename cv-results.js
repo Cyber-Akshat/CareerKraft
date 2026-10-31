@@ -30,6 +30,11 @@
         caption: document.getElementById(`${name}Caption`)
     }));
     const animationFrames = new Set();
+    const improveButtonContent = [...improveCvButton.childNodes].map(node => node.cloneNode(true));
+    let buildPending = false;
+    let buildCompleted = false;
+    let buildGeneration = 0;
+    let pendingScanId = null;
     let rewriteCards = [];
     let rewriteIndex = 0;
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -256,6 +261,7 @@
         try {
             const rawResult = sessionStorage.getItem(RESULT_STORAGE_KEY);
             if (!rawResult) {
+                resetBuildButton();
                 goToScanner(true);
                 return;
             }
@@ -267,11 +273,14 @@
                 throw new Error("Invalid CV scan result.");
             }
         } catch {
+            resetBuildButton();
             console.error("Invalid CV scan result.");
             forgetResult();
             goToScanner(true);
             return;
         }
+
+        if (buildPending && pendingScanId !== result.scanId) resetBuildButton();
 
         const analysis = result.analysis;
         const overall = clampScore(analysis.overallScore);
@@ -300,14 +309,85 @@
     -------------------------------- */
 
     scanAnotherButton.addEventListener("click", () => {
+        resetBuildButton();
         stopAnimations();
         forgetResult();
         if (dashboardMode) window.dispatchEvent(new CustomEvent("careerkraft:cv-reset"));
         goToScanner();
     });
 
-    improveCvButton.addEventListener("click", () => {
-        alert("CareerKraft CV Builder is coming next.");
+    function resetBuildButton() {
+        buildGeneration++;
+        pendingScanId = null;
+        buildPending = false;
+        buildCompleted = false;
+        improveCvButton.disabled = false;
+        improveCvButton.removeAttribute("aria-busy");
+        improveCvButton.replaceChildren(...improveButtonContent.map(node => node.cloneNode(true)));
+    }
+
+    function discardStaleBuild(generation, scanId) {
+        if (generation !== buildGeneration) return true;
+        let currentScanId;
+        try { currentScanId = JSON.parse(sessionStorage.getItem(RESULT_STORAGE_KEY))?.scanId; }
+        catch { /* Unreadable or replaced scan data cannot receive this build. */ }
+        if (currentScanId !== scanId || (dashboardMode && window.location.hash !== "#cv-results")) {
+            resetBuildButton();
+            return true;
+        }
+        return false;
+    }
+
+    improveCvButton.addEventListener("click", async () => {
+        if (buildPending) return;
+        const generation = ++buildGeneration;
+        let scanId = null;
+        buildPending = true;
+        improveCvButton.disabled = true;
+        improveCvButton.setAttribute("aria-busy", "true");
+        improveCvButton.textContent = "Preparing with Lumia";
+        const sparkle = document.createElement("span");
+        sparkle.setAttribute("aria-hidden", "true");
+        sparkle.textContent = "✦";
+        improveCvButton.appendChild(sparkle);
+
+        try {
+            let scanResult;
+            try { scanResult = JSON.parse(sessionStorage.getItem(RESULT_STORAGE_KEY)); }
+            catch { throw new Error("Your saved CV scan could not be read. Please scan your CV again."); }
+            if (!record(scanResult) || !Number.isSafeInteger(scanResult.scanId) || scanResult.scanId <= 0) {
+                throw new Error("Please scan your CV again before starting the CV Builder.");
+            }
+            scanId = scanResult.scanId;
+            pendingScanId = scanId;
+            const response = await fetch("/api/cv/build", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "same-origin",
+                body: JSON.stringify({ scanId: scanResult.scanId })
+            });
+            if (discardStaleBuild(generation, scanId)) return;
+            let result;
+            try { result = await response.json(); }
+            catch { throw new Error("CareerKraft received an invalid CV Builder response."); }
+            if (discardStaleBuild(generation, scanId)) return;
+            if (!response.ok) {
+                throw new Error(typeof result?.error === "string" && result.error.trim()
+                    ? result.error : "CareerKraft couldn't prepare your CV improvements right now.");
+            }
+            if (result?.success !== true || !Number.isSafeInteger(result.buildId) || result.buildId <= 0 ||
+                !record(result.structuredCv) || !Array.isArray(result.suggestions)) {
+                throw new Error("CareerKraft received an invalid CV Builder response.");
+            }
+            sessionStorage.setItem("careerkraft-cv-build", JSON.stringify(result));
+            buildCompleted = true;
+            window.location.href = `/cv-builder.html?build=${result.buildId}`;
+        } catch (error) {
+            if (generation !== buildGeneration || (scanId !== null && discardStaleBuild(generation, scanId))) return;
+            resetBuildButton();
+            console.error("CV Builder preparation failed.");
+            alert(error.message || "CareerKraft couldn't prepare your CV improvements right now.");
+        }
     });
 
     downloadReportButton?.addEventListener("click", () => window.print());
@@ -320,13 +400,17 @@
 
     window.addEventListener("pagehide", stopAnimations);
     window.addEventListener("pageshow", event => {
+        if (event.persisted && buildCompleted) resetBuildButton();
         if (event.persisted && (!dashboardMode || window.location.hash === "#cv-results")) loadCvResult();
     });
 
     if (dashboardMode) {
         window.addEventListener("careerkraft:dashboard-view", event => {
             if (event.detail?.view === "cv-results") loadCvResult();
-            else stopAnimations();
+            else {
+                resetBuildButton();
+                stopAnimations();
+            }
         });
     }
     if (!dashboardMode || window.location.hash === "#cv-results") loadCvResult();

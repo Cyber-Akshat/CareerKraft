@@ -407,7 +407,12 @@
         closePanel();
       }
     });
+    function openFromLocation() {
+      if (window.location.hash === '#lumia' && !isOpen) openPanel();
+    }
+    window.addEventListener('hashchange', openFromLocation);
     updateComposer();
+    openFromLocation();
     void loadHistory();
   }
 
