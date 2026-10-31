@@ -91,6 +91,88 @@ test('CV Builder supports compact extracted section layout while retaining whole
     cvText: 'Alex Morgan\nalex@example.test\nProjects\nI am not\ncertified in AWS.\nSkills\nPython' }), /unsupported/);
 });
 
+test('compact CV headers retain exact locations, postcodes and portfolio addresses as contact data', () => {
+  for (const address of ['London, UK', 'SW1A 1AA', 'Location: London, UK', 'alexmorgan.dev']) {
+    const value = valid();
+    Object.assign(value.structuredCv, { headline: 'Computing student', contact: [address, 'alex@example.test'],
+      education: ['BSc Computer Science'], skills: ['Python'] });
+    const source = `Alex Morgan\nComputing student\n${address}\nalex@example.test\nEducation\nBSc Computer Science\nProjects\n${sourceBullet}\nSkills\nPython`;
+    const output = validateCvBuildOutput(value, { ...context, cvText: source });
+    assert.deepEqual(output.structuredCv, value.structuredCv, address);
+    assert.deepEqual(output.suggestions, value.suggestions, address);
+  }
+});
+
+function originalValues(cv) {
+  return Object.values(cv).flatMap(value => Array.isArray(value) ? value : [value]).filter(Boolean);
+}
+
+function assertOriginalFactsOnly(output, source, requiredFacts) {
+  const compact = text => text.replace(/\s+/g, ' ').trim().toLowerCase();
+  const values = originalValues(output.structuredCv);
+  assert.ok(values.every(value => typeof value === 'string'));
+  for (const value of values) assert.ok(compact(source).includes(compact(value)), `Copied source text: ${value}`);
+  for (const fact of requiredFacts) assert.ok(values.some(value => compact(value).includes(compact(fact))), `Retained source fact: ${fact}`);
+}
+
+test('Lumia layout mismatches recover to complete source text without accepting isolated model bullet fragments', async () => {
+  const sourceBlock = `${sourceBullet}\nI documented the interface.`;
+  const source = `Alex Morgan\n\nalex@example.test\n\nProjects\n${sourceBlock}`;
+  const raw = valid();
+  raw.structuredCv.projects = [sourceBullet, 'I documented the interface.'];
+  assert.throws(() => validateCvBuildOutput(raw, { ...context, cvText: source }), /unsupported/,
+    'The raw model structure does not meet the complete-source-block rule');
+  let requests = 0;
+  const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+    ...providerOptions, fetch: async () => { requests++; return reply(raw); }
+  });
+  assert.equal(requests, 1, 'Recovery does not make another provider request');
+  assertOriginalFactsOnly(output, source, ['Alex Morgan', 'alex@example.test', sourceBlock]);
+  assert.doesNotThrow(() => validateCvBuildOutput(output, { ...context, cvText: source }),
+    'The recovered output must also pass the route\'s second validation');
+  assert.ok(output.suggestions.some(item => item.suggestionType === 'add_verified_skill' && item.suggestedText === 'Research'));
+});
+
+test('source recovery discards invented AI qualifications while retaining complete negation and omitted CV content', async () => {
+  const qualification = 'I have not earned:\nAWS certification.';
+  const interests = 'Interests\nChess and hiking';
+  const source = `${cvText}\n\n${qualification}\n\n${interests}`;
+  const raw = valid();
+  raw.structuredCv.name = 'Invented Person';
+  raw.structuredCv.education = ['PhD from Invented University'];
+  raw.structuredCv.experience = ['Engineer at Invented Employer, 2020-2024'];
+  raw.structuredCv.certifications = ['AWS certification.'];
+  raw.suggestions.unshift({ ...valid().suggestions[0], originalText: qualification,
+    suggestedText: 'AWS certified.', evidence: ['AWS certification.'] });
+  const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+    ...providerOptions, fetch: async () => reply(raw)
+  });
+  assertOriginalFactsOnly(output, source, ['Alex Morgan', 'alex@example.test', sourceBullet, qualification, interests]);
+  assert.doesNotMatch(JSON.stringify(output.structuredCv), /Invented Person|Invented University|Invented Employer|PhD/);
+  assert.ok(!originalValues(output.structuredCv).some(text => text.trim() === 'AWS certification.'),
+    'The positive certification fragment must not become an independent CV fact');
+  assert.ok(!output.suggestions.some(item => item.suggestedText === 'AWS certified.'));
+  assert.ok(output.suggestions.some(item => item.suggestionType === 'add_verified_skill' && item.suggestedText === 'Research'));
+  assert.doesNotThrow(() => validateCvBuildOutput(output, { ...context, cvText: source }));
+});
+
+test('source recovery cannot promote a qualified narrative location into an independent contact claim', async () => {
+  for (const heading of ['Profile\n', '']) {
+    const qualification = 'I do not live in:\n\nLondon, UK';
+    const source = `Alex Morgan\n\nalex@example.test\n\n${heading}${qualification}`;
+    const raw = valid();
+    raw.structuredCv.name = 'Invented Person';
+    raw.suggestions = [];
+    const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+      ...providerOptions, fetch: async () => reply(raw)
+    });
+    assert.ok(!output.structuredCv.contact.some(text => text.includes('London, UK')),
+      'A location in the body is not independent header contact information');
+    assertOriginalFactsOnly(output, source, ['Alex Morgan', 'alex@example.test', qualification]);
+    assert.doesNotThrow(() => validateCvBuildOutput(output, { ...context, cvText: source }));
+  }
+});
+
 test('CV Builder preserves a profile spanning complete contiguous paragraphs without dropping qualifications', () => {
   const value = valid();
   const profile = 'I am a computing student.\n\nI enjoy programming.';
@@ -173,6 +255,9 @@ test('CV Builder cannot move a header qualification into contact to create an un
   value.structuredCv.contact = ['No experience as Software Engineer; alex@example.test'];
   assert.throws(() => validateCvBuildOutput(value, { ...context,
     cvText: 'Alex Morgan\nSoftware Engineer\nNo experience as Software Engineer; alex@example.test' }), /unsupported/);
+  value.structuredCv.contact = ['Location: No experience as Software Engineer', 'alex@example.test'];
+  assert.throws(() => validateCvBuildOutput(value, { ...context,
+    cvText: 'Alex Morgan\nSoftware Engineer\nLocation: No experience as Software Engineer\nalex@example.test' }), /unsupported/);
 });
 
 test('CV Builder retains long untouched source paragraphs and negative-leading factual text', () => {
@@ -314,10 +399,32 @@ test('CV Builder rejects failed, empty, malformed, truncated and oversized provi
   }
 });
 
+test('CV Builder provider failures retain safe diagnostic categories without provider bodies or CV data', async () => {
+  const errors = [];
+  for (const [code, respond] of [
+    ['CV_BUILD_RATE_LIMITED', () => new Response('PRIVATE_PROVIDER_BODY_AND_CV', { status: 429 })],
+    ['CV_BUILD_INVALID_JSON', () => reply(valid(), { message: { content: 'PRIVATE_INVALID_JSON' } })]
+  ]) {
+    await assert.rejects(generateCvBuildWithLumia(context, { ...providerOptions, fetch: async () => respond() }), error => {
+      assert.equal(error.message, 'Lumia CV builder failed.');
+      assert.equal(error.code, code);
+      assert.doesNotMatch(JSON.stringify(error), /PRIVATE|Alex Morgan|alex@example|test-only-cv-builder-key/);
+      errors.push(error);
+      return true;
+    });
+  }
+  assert.notEqual(errors[0].code, errors[1].code, 'Rate limiting and invalid JSON need distinct diagnostic categories');
+});
+
 test('CV Builder has a deadline even when the provider ignores cancellation', async () => {
   let signal;
   await assert.rejects(generateCvBuildWithLumia(context, { ...providerOptions, timeoutMs: 15,
     fetch: async (url, options) => { signal = options.signal; return new Promise(() => {}); }
-  }), /timed out/);
+  }), error => {
+    assert.match(error.message, /timed out/);
+    assert.equal(error.code, 'CV_BUILD_TIMEOUT');
+    assert.doesNotMatch(JSON.stringify(error), /Alex Morgan|alex@example|test-only-cv-builder-key/);
+    return true;
+  });
   assert.equal(signal.aborted, true);
 });

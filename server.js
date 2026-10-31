@@ -1595,20 +1595,26 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     }
 
     let transactionStarted = false;
+    let stage = 'source';
     try {
       const scan = await db.prepare(`SELECT id, extracted_text FROM cv_scans
         WHERE id = ? AND user_id = ? LIMIT 1`).get(scanId, user.id);
       if (!scan) return res.status(404).json({ error: 'CV scan not found.' });
+      stage = 'profile';
       const { targetCareer, verifiedSkills } = await cvProfileContext(user.id);
       // Model latency must not hold a database transaction or apply any edits.
+      stage = 'lumia';
       const rawOutput = await (options.generateCvBuildWithLumia || generateCvBuildWithLumia)(
         { cvText: scan.extracted_text, targetCareer, verifiedSkills }, { fetch: fetchLumia }
       );
+      stage = 'validation';
       const output = validateCvBuildOutput(rawOutput, { cvText: scan.extracted_text, verifiedSkills });
       const now = Date.now();
 
+      stage = 'transaction';
       await db.exec('BEGIN');
       transactionStarted = true;
+      stage = 'build';
       const build = await db.prepare(`INSERT INTO cv_builds (
         user_id, cv_scan_id, target_career, original_cv_text, current_cv_json, status,
         total_suggestions, accepted_count, rejected_count, edited_count, created_at, updated_at
@@ -1617,6 +1623,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
         output.suggestions.length, now, now
       );
       const buildId = Number(build.lastInsertRowid);
+      stage = 'suggestions';
       const saveSuggestion = db.prepare(`INSERT INTO cv_build_suggestions (
         cv_build_id, section_name, suggestion_type, original_text, suggested_text, reason,
         evidence_json, status, final_text, sort_order, created_at, updated_at
@@ -1632,19 +1639,63 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
           status: 'pending', finalText: null, sortOrder: index + 1
         });
       }
+      stage = 'commit';
       await db.exec('COMMIT');
       transactionStarted = false;
       res.json({
         success: true, buildId, targetCareer, structuredCv: output.structuredCv,
         suggestions: savedSuggestions
       });
-    } catch {
+    } catch (error) {
       if (transactionStarted) {
         try { await db.exec('ROLLBACK'); }
         catch { console.error('CV Builder transaction rollback failed.'); }
       }
-      console.error('CV Builder creation failed.');
-      res.status(500).json({ error: "CareerKraft couldn't prepare your CV improvements right now." });
+      const failureCodes = new Set([
+        'CV_BUILD_INPUT', 'CV_BUILD_CONFIG', 'CV_BUILD_CONTEXT_TOO_LARGE', 'CV_BUILD_PROVIDER_HTTP',
+        'CV_BUILD_RATE_LIMITED', 'CV_BUILD_TIMEOUT', 'CV_BUILD_RESPONSE_TOO_LARGE', 'CV_BUILD_INVALID_JSON',
+        'CV_BUILD_INCOMPLETE', 'CV_BUILD_VALIDATION', 'CV_BUILD_PROVIDER_NETWORK', 'CV_BUILD_FAILED'
+      ]);
+      const databaseCodes = new Set([
+        'ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR', 'ER_DATA_TOO_LONG', 'ER_LOCK_DEADLOCK',
+        'ER_LOCK_WAIT_TIMEOUT', 'ER_NO_REFERENCED_ROW_2', 'ER_CHECK_CONSTRAINT_VIOLATED',
+        'ER_BAD_NULL_ERROR', 'ER_INVALID_JSON_TEXT', 'ER_DUP_ENTRY', 'ER_ACCESS_DENIED_ERROR'
+      ]);
+      const code = failureCodes.has(error?.code) ? error.code : 'CV_BUILD_FAILED';
+      const diagnostics = { stage, code };
+      if (Number.isInteger(error?.providerStatus) && error.providerStatus >= 100 && error.providerStatus <= 599) {
+        diagnostics.providerStatus = error.providerStatus;
+      }
+      if (['schema', 'unsupported_facts', 'missing_source', 'no_source'].includes(error?.validationReason)) {
+        diagnostics.validationReason = error.validationReason;
+      }
+      if (databaseCodes.has(error?.code)) {
+        diagnostics.databaseCode = error.code;
+        if (typeof error.sqlState === 'string' && /^[A-Z0-9]{5}$/.test(error.sqlState)) diagnostics.sqlState = error.sqlState;
+      }
+      // Log fixed categories only: provider/driver error messages and SQL can
+      // contain uploaded CV text, credentials or private context.
+      console.error('CV Builder creation failed.', diagnostics);
+      let status = 500;
+      let message = "CareerKraft couldn't prepare your CV improvements right now.";
+      const result = { error: message, code };
+      if (code === 'CV_BUILD_RATE_LIMITED' || (code === 'CV_BUILD_PROVIDER_HTTP' && diagnostics.providerStatus === 429)) {
+        status = 503;
+        message = 'Lumia is busy right now. Please try preparing your CV improvements again shortly.';
+        if (Number.isInteger(error?.retryAfterSeconds) && error.retryAfterSeconds > 0) {
+          result.retryAfterSeconds = Math.min(300, error.retryAfterSeconds);
+          res.set('Retry-After', String(result.retryAfterSeconds));
+        }
+      } else if (code === 'CV_BUILD_TIMEOUT') {
+        status = 504;
+        message = 'Lumia took too long to prepare your CV improvements. Please try again.';
+      } else if (['CV_BUILD_PROVIDER_HTTP', 'CV_BUILD_PROVIDER_NETWORK', 'CV_BUILD_RESPONSE_TOO_LARGE',
+        'CV_BUILD_INVALID_JSON', 'CV_BUILD_INCOMPLETE', 'CV_BUILD_VALIDATION'].includes(code)) {
+        status = 502;
+        message = "Lumia couldn't prepare a reliable CV draft. Please try again.";
+      }
+      result.error = message;
+      res.status(status).json(result);
     }
   });
 

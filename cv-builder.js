@@ -99,10 +99,18 @@ function paragraphs(cvText) {
 
 function contactLine(value) {
   return value.split(/\s*[|·•]\s*/).every(part => {
-    const text = part.replace(/^(?:e-?mail|phone|tel|mobile|website|linkedin|github)\s*:\s*/i, '').trim();
-    return /^[\w.+-]+@[\w.-]+\.[a-z]{2,}$/i.test(text) ||
+    const label = /^(e-?mail|phone|tel|mobile|website|linkedin|github|location|address|postcode|postal code|city)\s*:\s*/i.exec(part);
+    const text = (label ? part.slice(label[0].length) : part).trim();
+    if (!text) return false;
+    if (/^[\w.+-]+@[\w.-]+\.[a-z]{2,}$/i.test(text) ||
       /^(?:https?:\/\/|www\.|linkedin\.com\/|github\.com\/)\S+$/i.test(text) ||
-      (/^\+?[\d ()-]+$/.test(text) && text.replace(/\D/g, '').length >= 7);
+      /^[a-z\d](?:[a-z\d.-]*[a-z\d])?\.(?:com|org|net|dev|io|me|app|uk|edu)(?:\/[^\s]*)?$/i.test(text) ||
+      (/^\+?[\d ()-]+$/.test(text) && text.replace(/\D/g, '').length >= 7) ||
+      /^(?:GIR\s?0AA|[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})$/i.test(text)) return true;
+    if (QUALIFIED.test(text)) return false;
+    return /^[\p{L}\p{M}][\p{L}\p{M} .'-]{1,60},\s*[\p{L}\p{M}][\p{L}\p{M} .'-]{1,60}$/u.test(text) ||
+      (label && /^(?:location|address|postcode|postal code|city)$/i.test(label[1]) &&
+        /^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N} .,'’#()&/\-]{1,199}$/u.test(text));
   });
 }
 
@@ -142,6 +150,9 @@ function sourceBlocks(cvText) {
 }
 
 function originalParagraph(value, field, cvText) {
+  // An ambiguous layout can always retain the complete uploaded document as
+  // one original block. This never accepts an AI summary or isolated claim.
+  if (field === 'profile' && literal(value) === literal(cvText)) return true;
   // A literal copy is always safe, including a paragraph beginning with a
   // minus sign. The rewrite guard deliberately treats that syntax cautiously.
   const matches = text => literal(value) === literal(text) || cvSourceGrounding.paragraph(value, text);
@@ -232,6 +243,68 @@ function structuredOriginal(value, cvText) {
   return output;
 }
 
+function structureOriginalCv(cvText) {
+  const empty = () => ({ name: '', headline: '', contact: [], profile: '', education: [],
+    experience: [], projects: [], skills: [], certifications: [] });
+  const cv = empty();
+  let currentField = null;
+  const append = (field, text) => {
+    if (!text) return;
+    if (LIST_FIELDS.includes(field)) cv[field].push(text);
+    else cv.profile += (cv.profile ? '\n\n' : '') + text;
+  };
+  const blocks = sourceBlocks(cvText);
+  for (const [index, block] of blocks.entries()) {
+    const lines = block.text.split('\n').map(line => line.trim()).filter(Boolean);
+    if (index === 0 && ((!block.field && lines.length > 1) || block.field === 'header') && compactHeader(lines)) {
+      cv.name = lines[0];
+      let contactStart = 1;
+      if (lines[1] && !contactLine(lines[1])) { cv.headline = lines[1]; contactStart++; }
+      cv.contact = lines.slice(contactStart);
+      continue;
+    }
+    if (block.field && block.field !== 'header') {
+      currentField = block.field;
+      append(currentField, block.text);
+    } else if (!currentField && !cv.profile && lines.length === 1 && contactLine(block.text)) {
+      cv.contact.push(block.text);
+    } else if (index === 0 && lines.length === 1 && lines[0].length <= 255 && !QUALIFIED.test(lines[0]) &&
+        /^[\p{Lu}][\p{L}\p{M}'’.-]+(?:\s+[\p{Lu}][\p{L}\p{M}'’.-]+){1,5}$/u.test(lines[0])) {
+      cv.name = lines[0];
+    } else {
+      // Keep paragraphs and any introductory qualifications together. Missing
+      // or unusual section labels are not permission to invent CV content.
+      append(currentField || 'profile', block.text);
+    }
+  }
+  try { return structuredOriginal(cv, cvText); }
+  catch { return structuredOriginal({ ...empty(), profile: cvText.trim() }, cvText); }
+}
+
+function validateGeneratedBuild(value, context) {
+  try { return validateCvBuildOutput(value, context); }
+  catch (error) {
+    if (!record(value) || !record(value.structuredCv) || !Array.isArray(value.suggestions)) throw error;
+    // The model may split a wrapped paragraph or reformat contact details.
+    // Rebuild the original from source instead of weakening factual checks or
+    // saving model-generated original content. Suggestions remain unapproved
+    // and still have to pass the same source/evidence validation below.
+    return validateCvBuildOutput({ structuredCv: structureOriginalCv(context.cvText), suggestions: value.suggestions }, context);
+  }
+}
+
+function builderFailure(code, details = {}, message = 'Lumia CV builder failed.') {
+  return Object.assign(new Error(message), { code, ...details });
+}
+
+function validationReason(error) {
+  return ({
+    'The structured CV contains unsupported facts.': 'unsupported_facts',
+    'The structured CV omits original source content.': 'missing_source',
+    'The structured CV contains no source content.': 'no_source'
+  })[error?.message] || 'schema';
+}
+
 function validateCvBuildOutput(raw, { cvText = '', verifiedSkills = [] } = {}) {
   if (!record(raw) || !record(raw.structuredCv) || !Array.isArray(raw.suggestions) ||
       typeof cvText !== 'string' || !cvText.trim() || cvText.length > MAX_CV_TEXT) throw new Error('Invalid CV build output.');
@@ -283,9 +356,17 @@ function validateCvBuildOutput(raw, { cvText = '', verifiedSkills = [] } = {}) {
 }
 
 async function providerJSON(response, signal) {
-  if (!response?.ok || Number(response.headers?.get?.('content-length')) > MAX_PROVIDER_BYTES || !response.body?.getReader) {
+  if (!response?.ok) {
     await response?.body?.cancel?.().catch(() => {});
-    throw new Error('Invalid CV builder provider response.');
+    const status = response?.status;
+    const details = Number.isInteger(status) && status >= 100 && status <= 599 ? { providerStatus: status } : {};
+    const retry = Number(response?.headers?.get?.('retry-after'));
+    if (Number.isFinite(retry) && retry > 0) details.retryAfterSeconds = Math.min(300, Math.max(1, Math.ceil(retry)));
+    throw builderFailure(status === 429 ? 'CV_BUILD_RATE_LIMITED' : 'CV_BUILD_PROVIDER_HTTP', details);
+  }
+  if (Number(response.headers?.get?.('content-length')) > MAX_PROVIDER_BYTES || !response.body?.getReader) {
+    await response.body?.cancel?.().catch(() => {});
+    throw builderFailure('CV_BUILD_RESPONSE_TOO_LARGE');
   }
   const reader = response.body.getReader();
   const cancel = () => { void reader.cancel().catch(() => {}); };
@@ -298,11 +379,12 @@ async function providerJSON(response, signal) {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > MAX_PROVIDER_BYTES) throw new Error('CV builder provider response too large.');
+      if (bytes > MAX_PROVIDER_BYTES) throw builderFailure('CV_BUILD_RESPONSE_TOO_LARGE');
       chunks.push(Buffer.from(value));
     }
     signal.throwIfAborted();
-    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
+    try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))); }
+    catch { throw builderFailure('CV_BUILD_INVALID_JSON'); }
   } finally {
     signal.removeEventListener('abort', cancel);
     await reader.cancel().catch(() => {});
@@ -311,9 +393,9 @@ async function providerJSON(response, signal) {
 }
 
 async function generateCvBuildWithLumia({ cvText, targetCareer, verifiedSkills }, options = {}) {
-  if (typeof cvText !== 'string' || !cvText.trim() || cvText.length > MAX_CV_TEXT) throw new Error('A readable CV is required.');
+  if (typeof cvText !== 'string' || !cvText.trim() || cvText.length > MAX_CV_TEXT) throw builderFailure('CV_BUILD_INPUT', {}, 'A readable CV is required.');
   const apiKey = options.apiKey ?? process.env.GROQ_API_KEY;
-  if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('GROQ_API_KEY is not configured.');
+  if (typeof apiKey !== 'string' || !apiKey.trim()) throw builderFailure('CV_BUILD_CONFIG', {}, 'GROQ_API_KEY is not configured.');
   const timeoutMs = options.timeoutMs ?? 30000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) throw new Error('Invalid CV builder timeout.');
   const body = JSON.stringify({
@@ -323,28 +405,37 @@ async function generateCvBuildWithLumia({ cvText, targetCareer, verifiedSkills }
       verifiedSkills: [...verifiedSkillMap(verifiedSkills).values()]
     }) }]
   });
-  if (Buffer.byteLength(body) > MAX_PROVIDER_BYTES) throw new Error('The CV builder context is too large.');
+  if (Buffer.byteLength(body) > MAX_PROVIDER_BYTES) throw builderFailure('CV_BUILD_CONTEXT_TOO_LARGE', {}, 'The CV builder context is too large.');
   const controller = new AbortController();
   let timer;
   const deadline = new Promise((resolve, reject) => {
-    timer = setTimeout(() => { controller.abort(); reject(new Error('Lumia CV builder timed out.')); }, timeoutMs);
+    timer = setTimeout(() => { controller.abort(); reject(builderFailure('CV_BUILD_TIMEOUT', {}, 'Lumia CV builder timed out.')); }, timeoutMs);
   });
   try {
     return await Promise.race([deadline, (async () => {
-      const response = await (options.fetch || globalThis.fetch)('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
-        body, signal: controller.signal
-      });
+      let response;
+      try {
+        response = await (options.fetch || globalThis.fetch)('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey.trim()}` },
+          body, signal: controller.signal
+        });
+      } catch { throw builderFailure('CV_BUILD_PROVIDER_NETWORK'); }
       const data = await providerJSON(response, controller.signal);
       const choice = data?.choices?.[0];
       const raw = choice?.message?.content;
       if (data?.error || data?.truncated === true || data?.incomplete === true || choice?.message?.refusal ||
           (choice?.finish_reason !== undefined && choice.finish_reason !== 'stop') ||
-          typeof raw !== 'string' || !raw.trim() || raw.length > MAX_PROVIDER_BYTES) throw new Error('Invalid CV builder content.');
-      return validateCvBuildOutput(JSON.parse(raw), { cvText, verifiedSkills });
+          typeof raw !== 'string' || !raw.trim() || raw.length > MAX_PROVIDER_BYTES) throw builderFailure('CV_BUILD_INCOMPLETE');
+      let parsed;
+      try { parsed = JSON.parse(raw); }
+      catch { throw builderFailure('CV_BUILD_INVALID_JSON'); }
+      try { return validateGeneratedBuild(parsed, { cvText, verifiedSkills }); }
+      catch (error) { throw builderFailure('CV_BUILD_VALIDATION', { validationReason: validationReason(error) }); }
     })()]);
-  } catch {
-    throw new Error(controller.signal.aborted ? 'Lumia CV builder timed out.' : 'Lumia CV builder failed.');
+  } catch (error) {
+    if (controller.signal.aborted) throw builderFailure('CV_BUILD_TIMEOUT', {}, 'Lumia CV builder timed out.');
+    if (/^CV_BUILD_/.test(error?.code)) throw error;
+    throw builderFailure('CV_BUILD_FAILED');
   } finally { clearTimeout(timer); }
 }
 

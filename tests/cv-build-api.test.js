@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const { createApp } = require('../server');
+const { generateCvBuildWithLumia, validateCvBuildOutput } = require('../cv-builder');
 
 const sourceBullet = 'I built a dashboard using Python.';
 const cvText = `  Alex Morgan\n\nalex@example.test\n\n${sourceBullet}\n `;
@@ -21,14 +22,14 @@ function validOutput() {
   };
 }
 
-async function setup(t) {
+async function setup(t, { generator = validOutput, fetchLumia } = {}) {
   const inputs = [];
   const transactionStates = [];
-  let generate = validOutput;
-  const { app, db } = createApp({ database: ':memory:', generateCvBuildWithLumia: async input => {
+  let generate = generator;
+  const { app, db } = createApp({ database: ':memory:', fetchLumia, generateCvBuildWithLumia: async (input, options) => {
     inputs.push(input);
     transactionStates.push(db.isTransaction);
-    return generate(input);
+    return generate(input, options);
   } });
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -57,7 +58,7 @@ async function setup(t) {
       method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json',
         ...(user ? { Cookie: `ck_session=cv-build-session-${user}` } : {}) }, body: JSON.stringify(body)
     });
-    return { status: response.status, data: await response.json() };
+    return { status: response.status, headers: Object.fromEntries(response.headers), data: await response.json() };
   }
   const noBuilds = () => {
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM cv_builds').get().count, 0);
@@ -144,6 +145,62 @@ test('a student without a selected career or verified skills can create a build 
   assert.equal(h.db.prepare('SELECT COUNT(*) AS count FROM cv_build_suggestions').get().count, 0);
 });
 
+test('the real Lumia helper recovers source layout through HTTP before saving only safe pending suggestions', async t => {
+  const project = `${sourceBullet}\nI documented the interface with classmates.`;
+  const source = `  Alex Morgan\nLondon, UK\nalex@example.test\ngithub.com/alex\n\nProjects\n${project}\n\nSkills\nPython\n `;
+  const model = validOutput();
+  Object.assign(model.structuredCv, {
+    contact: ['alex@example.test', 'https://github.com/alex'],
+    projects: [sourceBullet, 'I documented the interface with classmates.'], skills: ['Python']
+  });
+  // A model can return plausible JSON while changing layout: the original
+  // guard correctly rejects URL reformatting and fragments of a paragraph.
+  assert.throws(() => validateCvBuildOutput(model, {
+    cvText: source, verifiedSkills: [{ name: 'Research', verifiedCount: 3 }]
+  }), /unsupported|source/);
+  const providerCalls = [];
+  const h = await setup(t, {
+    generator: (input, options) => generateCvBuildWithLumia(input, { ...options, apiKey: 'test-only-cv-build-key' }),
+    fetchLumia: async (url, options) => {
+      providerCalls.push({ url, body: JSON.parse(options.body) });
+      assert.equal(options.headers.Authorization, 'Bearer test-only-cv-build-key');
+      return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop',
+        message: { content: JSON.stringify(model) } }] }), { headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  h.db.prepare('UPDATE cv_scans SET extracted_text = ? WHERE id = ?').run(source, 10);
+  const response = await h.submit();
+  assert.equal(response.status, 200, 'The generated fallback must also pass the route validation before persistence');
+  assert.equal(response.data.success, true);
+  assert.equal(providerCalls.length, 1);
+  assert.equal(providerCalls[0].url, 'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal(JSON.parse(providerCalls[0].body.messages[1].content).cvText, source);
+  assert.deepEqual(h.transactionStates, [false], 'Model generation and source recovery happen before the transaction');
+  assert.deepEqual(response.data.structuredCv, {
+    name: 'Alex Morgan', headline: '', contact: ['London, UK', 'alex@example.test', 'github.com/alex'],
+    profile: '', education: [], experience: [], projects: [project], skills: ['Python'], certifications: []
+  });
+  assert.equal(response.data.suggestions.length, 1, 'Fragment rewrites are discarded; the verified skill remains a pending suggestion');
+  const suggestion = response.data.suggestions[0];
+  assert.ok(Number.isSafeInteger(suggestion.id) && suggestion.id > 0);
+  assert.equal(suggestion.suggestionType, 'add_verified_skill');
+  assert.equal(suggestion.suggestedText, 'Research');
+  assert.equal(suggestion.status, 'pending');
+  assert.equal(suggestion.finalText, null);
+  assert.deepEqual(suggestion.evidence, ['Research']);
+  const build = h.db.prepare('SELECT * FROM cv_builds WHERE id = ?').get(response.data.buildId);
+  assert.equal(build.original_cv_text, source, 'The uploaded text stays complete and unchanged');
+  assert.deepEqual(JSON.parse(build.current_cv_json), response.data.structuredCv);
+  assert.equal(build.total_suggestions, 1);
+  assert.deepEqual([build.accepted_count, build.edited_count, build.rejected_count], [0, 0, 0]);
+  const saved = h.db.prepare('SELECT * FROM cv_build_suggestions WHERE cv_build_id = ?').all(build.id);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].id, suggestion.id);
+  assert.equal(saved[0].status, 'pending');
+  assert.equal(saved[0].suggested_text, 'Research');
+  assert.equal(h.db.isTransaction, false);
+});
+
 test('CV build requests require a session, trusted origin, valid scan ID and ownership before contacting Lumia', async t => {
   const h = await setup(t);
   assert.equal((await h.submit({ scanId: 10 }, { user: 0 })).status, 401);
@@ -179,12 +236,15 @@ test('Lumia failures and malformed CV builds return a generic error without star
 
 test('failure saving a later suggestion rolls back the entire build and permits a clean retry', async t => {
   const h = await setup(t);
+  const logs = [];
+  t.mock.method(console, 'error', (...items) => logs.push(items));
   h.db.exec(`CREATE TRIGGER fail_second_cv_build_suggestion BEFORE INSERT ON cv_build_suggestions
     WHEN NEW.sort_order=2 BEGIN SELECT RAISE(ABORT,'PRIVATE suggestion storage failure'); END`);
   const failed = await h.submit();
   assert.ok([500, 503].includes(failed.status));
   assert.equal(typeof failed.data.error, 'string');
   assert.doesNotMatch(JSON.stringify(failed.data), /PRIVATE|suggestion storage failure/);
+  assert.deepEqual(logs, [['CV Builder creation failed.', { stage: 'suggestions', code: 'CV_BUILD_FAILED' }]]);
   assert.equal(h.db.isTransaction, false);
   h.noBuilds();
   assert.equal(h.db.prepare('SELECT extracted_text FROM cv_scans WHERE id=10').get().extracted_text, cvText);
@@ -195,4 +255,97 @@ test('failure saving a later suggestion rolls back the entire build and permits 
   assert.equal(h.db.prepare('SELECT COUNT(*) AS count FROM cv_build_suggestions').get().count, 2);
   assert.equal(h.db.isTransaction, false);
   assert.deepEqual(h.transactionStates, [false, false]);
+});
+
+test('coded Lumia failures return useful retry errors and safe diagnostics without saving a partial build', async t => {
+  const h = await setup(t);
+  const logs = [];
+  t.mock.method(console, 'error', (...items) => logs.push(items));
+  const scenarios = [
+    { code: 'CV_BUILD_RATE_LIMITED', status: 503, providerStatus: 429, retryAfterSeconds: 15, message: /busy/i },
+    { code: 'CV_BUILD_TIMEOUT', status: 504, message: /too long/i },
+    { code: 'CV_BUILD_PROVIDER_HTTP', status: 502, providerStatus: 401, message: /reliable CV draft/i },
+    { code: 'CV_BUILD_PROVIDER_NETWORK', status: 502, message: /reliable CV draft/i },
+    { code: 'CV_BUILD_RESPONSE_TOO_LARGE', status: 502, message: /reliable CV draft/i },
+    { code: 'CV_BUILD_INVALID_JSON', status: 502, message: /reliable CV draft/i },
+    { code: 'CV_BUILD_INCOMPLETE', status: 502, message: /reliable CV draft/i },
+    { code: 'CV_BUILD_VALIDATION', status: 502, validationReason: 'unsupported_facts', message: /reliable CV draft/i },
+    { code: 'CV_BUILD_INPUT', status: 500, message: /couldn't prepare/i },
+    { code: 'CV_BUILD_CONFIG', status: 500, message: /couldn't prepare/i },
+    { code: 'CV_BUILD_CONTEXT_TOO_LARGE', status: 500, message: /couldn't prepare/i },
+    { code: 'CV_BUILD_FAILED', status: 500, message: /couldn't prepare/i }
+  ];
+  for (const scenario of scenarios) {
+    const error = Object.assign(new Error(`PRIVATE CV source and provider credentials: ${cvText}`), {
+      code: scenario.code, providerStatus: scenario.providerStatus,
+      validationReason: scenario.validationReason, retryAfterSeconds: scenario.retryAfterSeconds,
+      sql: `PRIVATE SQL ${cvText}`, sqlMessage: 'PRIVATE database body', response: { body: 'PRIVATE provider body' }
+    });
+    h.setGenerator(() => { throw error; });
+    const response = await h.submit();
+    assert.equal(response.status, scenario.status, scenario.code);
+    assert.equal(response.data.code, scenario.code);
+    assert.match(response.data.error, scenario.message);
+    const diagnostic = { stage: 'lumia', code: scenario.code };
+    if (scenario.providerStatus) diagnostic.providerStatus = scenario.providerStatus;
+    if (scenario.validationReason) diagnostic.validationReason = scenario.validationReason;
+    assert.deepEqual(logs.at(-1), ['CV Builder creation failed.', diagnostic]);
+    assert.doesNotMatch(JSON.stringify([logs, response.data]), /PRIVATE|alex@example|credentials/);
+    assert.equal(response.headers['retry-after'], scenario.retryAfterSeconds ? '15' : undefined);
+    assert.equal(response.data.retryAfterSeconds, scenario.retryAfterSeconds);
+    assert.equal(h.db.isTransaction, false);
+    h.noBuilds();
+  }
+  assert.ok(h.transactionStates.every(state => state === false));
+});
+
+test('provider retry hints are bounded and unrecognised error details never become public or logged', async t => {
+  const h = await setup(t);
+  const logs = [];
+  t.mock.method(console, 'error', (...items) => logs.push(items));
+  for (const [hint, expected] of [[1, 1], [999999, 300], [0, undefined], [-5, undefined], [1.5, undefined], ['PRIVATE', undefined]]) {
+    h.setGenerator(() => { throw Object.assign(new Error('PRIVATE secret'), {
+      code: 'CV_BUILD_RATE_LIMITED', providerStatus: 429, retryAfterSeconds: hint
+    }); });
+    const response = await h.submit();
+    assert.equal(response.status, 503);
+    assert.equal(response.data.retryAfterSeconds, expected);
+    assert.equal(response.headers['retry-after'], expected === undefined ? undefined : String(expected));
+  }
+  h.setGenerator(() => { throw Object.assign(new Error('PRIVATE source and key'), {
+    code: 'PRIVATE_ERROR_CODE', providerStatus: 1000, validationReason: 'PRIVATE_CV',
+    sqlState: 'PRIVATE_SQL_STATE', sqlMessage: 'PRIVATE MySQL body', sql: `SELECT '${cvText}'`
+  }); });
+  const response = await h.submit();
+  assert.equal(response.status, 500);
+  assert.equal(response.data.code, 'CV_BUILD_FAILED');
+  assert.deepEqual(logs.at(-1), ['CV Builder creation failed.', { stage: 'lumia', code: 'CV_BUILD_FAILED' }]);
+  assert.doesNotMatch(JSON.stringify([logs, response.data]), /PRIVATE|alex@example/);
+  h.noBuilds();
+});
+
+test('database failures identify the source stage using only allowlisted driver metadata', async t => {
+  const h = await setup(t);
+  const logs = [];
+  t.mock.method(console, 'error', (...items) => logs.push(items));
+  const prepare = h.db.prepare.bind(h.db);
+  t.mock.method(h.db, 'prepare', sql => {
+    if (/SELECT id, extracted_text FROM cv_scans/.test(sql)) return {
+      get() {
+        throw Object.assign(new Error(`PRIVATE source ${cvText}`), {
+          code: 'ER_NO_SUCH_TABLE', sqlState: '42S02', sqlMessage: 'PRIVATE schema information', sql
+        });
+      }
+    };
+    return prepare(sql);
+  });
+  const response = await h.submit();
+  assert.equal(response.status, 500);
+  assert.equal(response.data.code, 'CV_BUILD_FAILED');
+  assert.deepEqual(logs, [['CV Builder creation failed.', {
+    stage: 'source', code: 'CV_BUILD_FAILED', databaseCode: 'ER_NO_SUCH_TABLE', sqlState: '42S02'
+  }]]);
+  assert.doesNotMatch(JSON.stringify([logs, response.data]), /PRIVATE|alex@example|SELECT/);
+  assert.equal(h.inputs.length, 0);
+  h.noBuilds();
 });
