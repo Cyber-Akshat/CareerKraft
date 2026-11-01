@@ -39,6 +39,9 @@ test('CV Builder separates source classification from review and sends canonical
       const request = JSON.parse(options.body);
       assert.equal(request.model, 'openai/gpt-oss-120b');
       assert.equal(request.temperature, 0.2);
+      assert.equal(request.reasoning_effort, 'low');
+      assert.equal(request.max_completion_tokens, requests.length === 0 ? 1024 : 4096,
+        'The ID-only parser needs a smaller output budget than the reviewer');
       assert.deepEqual(request.response_format, { type: 'json_object' });
       assert.equal(request.messages.length, 2);
       assert.match(request.messages[0].content, /untrusted/i);
@@ -512,6 +515,110 @@ test('CV Builder provider failures retain safe diagnostic categories without pro
     });
   }
   assert.notEqual(errors[0].code, errors[1].code, 'Rate limiting and invalid JSON need distinct diagnostic categories');
+});
+
+test('a transient rate limit retries only the failed pass after the provider wait', async () => {
+  const source = `Alex Morgan\nalex@example.test\nProjects\n${sourceBullet}`;
+  for (const limitedPass of ['parser', 'reviewer']) {
+    const baseline = deterministicParsedCv(createCvParseContext(source));
+    const requests = [];
+    const diagnostics = [];
+    const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+      ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async (url, options) => {
+        const isParser = JSON.parse(options.body).messages[0].content.includes('document parser');
+        const pass = isParser ? 'parser' : 'reviewer';
+        const repeated = requests.some(request => request.pass === pass);
+        requests.push({ pass, body: options.body, at: Date.now() });
+        if (pass === limitedPass && !repeated) return new Response('PRIVATE rate limit', {
+          status: 429, headers: { 'Retry-After': '1' }
+        });
+        return isParser ? reply({ sections: baseline.sections }) : reply({ suggestions: valid().suggestions });
+      }
+    });
+    assert.equal(requests.length, 3);
+    const retried = requests.filter(request => request.pass === limitedPass);
+    assert.equal(retried.length, 2);
+    assert.equal(retried[0].body, retried[1].body);
+    assert.ok(retried[1].at - retried[0].at >= 900, 'Do not retry before the requested cooldown');
+    assert.deepEqual(diagnostics.find(event => event.stage === 'rate_limit'), {
+      stage: 'rate_limit', providerStage: limitedPass, retryAfterSeconds: 1, willRetry: true
+    });
+    assert.deepEqual(output.suggestions, valid().suggestions);
+  }
+});
+
+test('a repeated rate limit preserves the final retry hint without restarting the parser', async () => {
+  const baseline = deterministicParsedCv(createCvParseContext(cvText));
+  const diagnostics = [];
+  let calls = 0;
+  await assert.rejects(generateCvBuildWithLumia(context, {
+    ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async () => {
+      if (++calls === 1) return reply({ sections: baseline.sections });
+      return new Response('PRIVATE quota detail', { status: 429, headers: { 'Retry-After': '1' } });
+    }
+  }), error => {
+    assert.equal(error.code, 'CV_BUILD_RATE_LIMITED');
+    assert.equal(error.providerStage, 'reviewer');
+    assert.equal(error.retryAfterSeconds, 1);
+    assert.doesNotMatch(JSON.stringify(error), /PRIVATE|Alex|test-only/);
+    return true;
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(diagnostics.filter(event => event.stage === 'rate_limit').map(event => event.willRetry), [true, false]);
+});
+
+test('unknown, excessive and deadline-exceeding rate limit waits return immediately without retry', async () => {
+  for (const [hint, timeoutMs, expectedHint] of [[null, 60000, undefined], ['invalid', 60000, undefined],
+    ['120', 60000, 120], ['1', 5000, 1], ['999999', 60000, 300]]) {
+    let calls = 0;
+    const diagnostics = [];
+    await assert.rejects(generateCvBuildWithLumia(context, {
+      ...providerOptions, timeoutMs, onDiagnostic: event => diagnostics.push(event), fetch: async () => {
+        calls++;
+        return new Response('PRIVATE quota', { status: 429, headers: hint ? { 'Retry-After': hint } : {} });
+      }
+    }), error => {
+      assert.equal(error.code, 'CV_BUILD_RATE_LIMITED');
+      assert.equal(error.retryAfterSeconds, expectedHint);
+      assert.equal(error.providerStage, 'parser');
+      return true;
+    });
+    assert.equal(calls, 1);
+    assert.equal(diagnostics[0].willRetry, false);
+  }
+});
+
+test('HTTP-date provider retry hints are returned as bounded seconds', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1800000000000 });
+  const retryAt = new Date(Date.now() + 90000).toUTCString();
+  let calls = 0;
+  await assert.rejects(generateCvBuildWithLumia(context, {
+    ...providerOptions, fetch: async () => {
+      calls++;
+      return new Response('PRIVATE quota', { status: 429, headers: { 'Retry-After': retryAt } });
+    }
+  }), error => error.code === 'CV_BUILD_RATE_LIMITED' && error.retryAfterSeconds === 90);
+  assert.equal(calls, 1);
+});
+
+test('deadline cancellation interrupts a scheduled rate limit retry without another provider call', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const waiting = Promise.withResolvers();
+  let signal;
+  let calls = 0;
+  const build = generateCvBuildWithLumia(context, {
+    ...providerOptions, onDiagnostic: event => { if (event.willRetry) waiting.resolve(); },
+    fetch: async (url, options) => {
+      calls++;
+      signal = options.signal;
+      return new Response('PRIVATE quota', { status: 429, headers: { 'Retry-After': '10' } });
+    }
+  });
+  await waiting.promise;
+  t.mock.timers.tick(60001);
+  await assert.rejects(build, error => error.code === 'CV_BUILD_TIMEOUT');
+  assert.equal(signal.aborted, true);
+  assert.equal(calls, 1);
 });
 
 test('CV Builder has a deadline even when the provider ignores cancellation', async () => {

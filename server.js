@@ -1612,11 +1612,13 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       // Model latency must not hold a database transaction or apply any edits.
       stage = 'lumia';
       const onDiagnostic = value => {
-        if (!value || !['parser', 'reviewer', 'fallback', 'validation'].includes(value.stage)) return;
+        if (!value || !['parser', 'reviewer', 'fallback', 'validation', 'rate_limit'].includes(value.stage)) return;
         const diagnostic = { stage: value.stage };
-        for (const key of ['sourceUnits', 'rawSuggestions', 'normalizedSuggestions', 'acceptedSuggestions', 'rejectedSuggestions']) {
+        for (const key of ['sourceUnits', 'rawSuggestions', 'normalizedSuggestions', 'acceptedSuggestions', 'rejectedSuggestions', 'retryAfterSeconds']) {
           if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 10000) diagnostic[key] = value[key];
         }
+        if (['parser', 'reviewer'].includes(value.providerStage)) diagnostic.providerStage = value.providerStage;
+        if (typeof value.willRetry === 'boolean') diagnostic.willRetry = value.willRetry;
         const rejectedByReason = {};
         for (const reason of ['invalid_schema', 'invalid_section', 'invalid_type', 'invalid_evidence', 'unknown_source',
           'ambiguous_source', 'source_mismatch', 'unsupported_rewrite', 'invalid_skill', 'duplicate', 'limit']) {
@@ -1695,6 +1697,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       ]);
       const code = failureCodes.has(error?.code) ? error.code : 'CV_BUILD_FAILED';
       const diagnostics = { stage, code };
+      if (['parser', 'reviewer'].includes(error?.providerStage)) diagnostics.providerStage = error.providerStage;
       if (Number.isInteger(error?.providerStatus) && error.providerStatus >= 100 && error.providerStatus <= 599) {
         diagnostics.providerStatus = error.providerStatus;
       }

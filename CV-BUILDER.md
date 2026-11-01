@@ -35,8 +35,36 @@ list remains distinguishable by its zero raw count.
 Logs contain counts and fixed rejection categories rather than uploaded CVs,
 contact details, or full model responses.
 
+## "Lumia is busy right now"
+
+This message means Groq returned HTTP 429. It can reflect request, token, or
+daily limits; the message alone does not identify which quota was reached.
+The scanner and other Lumia features also use the same model and can consume
+the organization's allowance. Check the service's Groq account
+[Limits page](https://console.groq.com/settings/limits) for its actual quotas;
+see [Groq's rate-limit documentation](https://console.groq.com/docs/rate-limits).
+
+The parser now uses an output budget scaled to the number of source IDs
+(1,024–4,096 tokens), and the reviewer uses 4,096 instead of 8,192 tokens.
+Both use low reasoning effort. If Groq supplies a short `Retry-After`, the
+server waits and retries that failing pass once, keeping any successful parser
+output. The wait must be at most 45 seconds and leave at least 5 seconds within
+the build's overall 60-second deadline. Missing hints, longer waits and repeated
+limits return the retryable error to the browser.
+
+`stage: 'rate_limit'` logs the `providerStage` (`parser` or `reviewer`), bounded
+`retryAfterSeconds` when available, and `willRetry`. The final failure log also
+identifies the failing pass. The results page shows `Try again in Ns` and blocks
+repeat clicks until the cooldown ends; it makes no automatic browser retries.
+When the provider omits a wait time, the button uses a 30-second fallback.
+
+If the error persists after the cooldown, check the account's quota and reset
+time. Reducing token use and retrying temporary limits cannot resolve an
+exhausted daily allowance. Deploy the updated backend and results script to
+Render before retesting the hosted application.
+
 Run the focused regression checks with:
 
 ```sh
-node --test tests/cv-parser.test.js tests/cv-suggestions.test.js tests/cv-builder.test.js tests/cv-build-api.test.js
+node --test tests/cv-parser.test.js tests/cv-suggestions.test.js tests/cv-builder.test.js tests/cv-build-api.test.js tests/cv-results.test.js
 ```
