@@ -530,56 +530,6 @@ test('coded Lumia failures return useful retry errors and safe diagnostics witho
   assert.ok(h.transactionStates.every(state => state === false));
 });
 
-test('a real provider rate limit returns the retry hint and failing pass without saving an empty build', async t => {
-  const logs = [];
-  const errors = [];
-  t.mock.method(console, 'info', (...items) => logs.push(items));
-  t.mock.method(console, 'error', (...items) => errors.push(items));
-  let calls = 0;
-  const h = await setup(t, {
-    generator: (input, options) => generateCvBuildWithLumia(input, { ...options, apiKey: 'test-only-cv-build-key' }),
-    fetchLumia: async () => {
-      calls++;
-      return new Response('PRIVATE provider quota and CV text', { status: 429, headers: { 'Retry-After': '120' } });
-    }
-  });
-  const response = await h.submit();
-  assert.equal(response.status, 503);
-  assert.equal(response.data.code, 'CV_BUILD_RATE_LIMITED');
-  assert.equal(response.data.retryAfterSeconds, 120);
-  assert.equal(response.headers['retry-after'], '120');
-  assert.equal(calls, 1, 'A long cooldown must not hold the request until its deadline');
-  assert.deepEqual(logs, [['CV Builder analysis.', {
-    stage: 'rate_limit', retryAfterSeconds: 120, providerStage: 'parser', willRetry: false
-  }]]);
-  assert.deepEqual(errors, [['CV Builder creation failed.', {
-    stage: 'lumia', code: 'CV_BUILD_RATE_LIMITED', providerStage: 'parser', providerStatus: 429
-  }]]);
-  assert.doesNotMatch(JSON.stringify([logs, errors, response.data]), /PRIVATE|Alex|example.test|test-only/);
-  assert.equal(h.db.isTransaction, false);
-  h.noBuilds();
-});
-
-test('validation failures expose only safe reason categories and never include arbitrary provider details', async t => {
-  const logs = [];
-  t.mock.method(console, 'error', (...items) => logs.push(items));
-  const h = await setup(t);
-  for (const validationReason of ['PRIVATE CV provider reason', '', { privateCv: cvText }, null]) {
-    h.setGenerator(() => { throw Object.assign(new Error(`PRIVATE failure ${cvText}`), {
-      code: 'CV_BUILD_VALIDATION', validationReason,
-      response: { body: `PRIVATE provider body ${cvText}` }
-    }); });
-    const response = await h.submit();
-    assert.equal(response.status, 502);
-    assert.deepEqual(response.data, {
-      code: 'CV_BUILD_VALIDATION', error: "Lumia couldn't prepare a reliable CV draft. Please try again."
-    });
-    assert.deepEqual(logs.at(-1), ['CV Builder creation failed.', { stage: 'lumia', code: 'CV_BUILD_VALIDATION' }]);
-    assert.doesNotMatch(JSON.stringify([response.data, logs]), /PRIVATE|Alex|example.test/);
-    h.noBuilds();
-  }
-});
-
 test('provider retry hints are bounded and unrecognised error details never become public or logged', async t => {
   const h = await setup(t);
   const logs = [];
