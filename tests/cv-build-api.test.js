@@ -303,6 +303,66 @@ test('the real Lumia helper recovers source layout through HTTP before saving on
   assert.equal(h.db.isTransaction, false);
 });
 
+test('an entirely rejected Lumia review recovers safe pending suggestions through the real API without another provider call', async t => {
+  const source = `Alex Morgan\nalex@example.test\n\nProjects\n${sourceBullet}`;
+  const invented = 'Led 20 AWS engineers to increase revenue by 80%.';
+  const logs = [];
+  t.mock.method(console, 'info', (...items) => logs.push(items));
+  let calls = 0;
+  const h = await setup(t, {
+    generator: (input, options) => generateCvBuildWithLumia(input, { ...options, apiKey: 'test-only-cv-build-key' }),
+    fetchLumia: async () => {
+      const content = ++calls === 1 ? {} : { suggestions: [{ ...validOutput().suggestions[0],
+        suggestedText: invented, reason: 'PRIVATE unsupported outcome.' }] };
+      return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop',
+        message: { content: JSON.stringify(content) } }] }), { headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  h.db.prepare('UPDATE cv_scans SET extracted_text = ? WHERE id = 10').run(source);
+  const created = await h.submit();
+  assert.equal(created.status, 200);
+  assert.equal(calls, 2);
+  assert.deepEqual(created.data.structuredCv, validOutput().structuredCv);
+  assert.equal(created.data.suggestions.length, 3);
+  const rewrite = created.data.suggestions.find(item => item.sectionName === 'Projects');
+  const skills = created.data.suggestions.filter(item => item.suggestionType === 'add_verified_skill');
+  assert.equal(rewrite.originalText, sourceBullet);
+  assert.equal(rewrite.suggestedText, 'Built a dashboard using Python.');
+  assert.deepEqual(skills.map(item => item.suggestedText), ['Research', 'Network Analysis']);
+  assert.ok(created.data.suggestions.every(item => item.status === 'pending' && item.finalText === null));
+
+  const { buildId } = created.data;
+  const readBuild = () => h.db.prepare('SELECT * FROM cv_builds WHERE id = ?').get(buildId);
+  const saved = readBuild();
+  assert.equal(saved.original_cv_text, source);
+  assert.deepEqual(JSON.parse(saved.current_cv_json), created.data.structuredCv);
+  assert.deepEqual([saved.total_suggestions, saved.accepted_count, saved.edited_count, saved.rejected_count], [3, 0, 0, 0]);
+  const storedSuggestions = h.db.prepare('SELECT * FROM cv_build_suggestions WHERE cv_build_id = ? ORDER BY sort_order').all(buildId);
+  assert.equal(storedSuggestions.length, 3);
+  assert.ok(storedSuggestions.every(item => item.status === 'pending' && item.final_text === null));
+  assert.doesNotMatch(JSON.stringify([created.data, storedSuggestions]), /AWS|20 engineers|80%|PRIVATE/);
+
+  const diagnostics = logs.filter(items => items[0] === 'CV Builder analysis.').map(items => items[1]);
+  assert.deepEqual(diagnostics.map(item => item.stage), ['fallback', 'reviewer', 'recovery', 'validation']);
+  assert.deepEqual(diagnostics[1], { stage: 'reviewer', rawSuggestions: 1, normalizedSuggestions: 1,
+    acceptedSuggestions: 0, rejectedSuggestions: 1, rejectedByReason: { unsupported_rewrite: 1 } });
+  assert.equal(diagnostics[2].acceptedSuggestions, 3);
+  assert.equal(diagnostics[2].rejectedSuggestions, 0);
+  assert.deepEqual(diagnostics[3], { stage: 'validation', rawSuggestions: 3, acceptedSuggestions: 3, rejectedSuggestions: 0 });
+  assert.doesNotMatch(JSON.stringify(logs), /PRIVATE|Alex|Python|Research|AWS/);
+
+  const accepted = await h.patch(buildId, rewrite.id, { status: 'accepted', finalText: rewrite.suggestedText });
+  assert.equal(accepted.status, 200);
+  const expected = { ...created.data.structuredCv, projects: [rewrite.suggestedText] };
+  assert.deepEqual(accepted.data.structuredCv, expected, 'Accepting the recovered rewrite changes only its source entry');
+  assert.deepEqual(JSON.parse(readBuild().current_cv_json), expected);
+  assert.deepEqual(accepted.data.progress, { accepted: 1, edited: 0, rejected: 0, pending: 2, reviewed: 1 });
+  assert.equal(readBuild().original_cv_text, source);
+  assert.equal(calls, 2, 'Neither recovery nor accepting a stored suggestion needs another provider request');
+  assert.deepEqual(h.transactionStates, [false]);
+  assert.equal(h.db.isTransaction, false);
+});
+
 test('a source-grounded two-pass rewrite survives route validation and applies only after an explicit review decision', async t => {
   const original = 'I used Python and Flask to build a dashboard.';
   const improved = 'Built a dashboard using Python and Flask.';
@@ -435,7 +495,11 @@ test('coded Lumia failures return useful retry errors and safe diagnostics witho
     { code: 'CV_BUILD_RESPONSE_TOO_LARGE', status: 502, message: /reliable CV draft/i },
     { code: 'CV_BUILD_INVALID_JSON', status: 502, message: /reliable CV draft/i },
     { code: 'CV_BUILD_INCOMPLETE', status: 502, message: /reliable CV draft/i },
+    { code: 'CV_BUILD_VALIDATION', status: 502, validationReason: 'schema', message: /format your CV improvements/i },
+    { code: 'CV_BUILD_VALIDATION', status: 502, validationReason: 'no_usable_suggestions', message: /supported improvements/i },
     { code: 'CV_BUILD_VALIDATION', status: 502, validationReason: 'unsupported_facts', message: /reliable CV draft/i },
+    { code: 'CV_BUILD_VALIDATION', status: 502, validationReason: 'missing_source', message: /reliable CV draft/i },
+    { code: 'CV_BUILD_VALIDATION', status: 502, validationReason: 'no_source', message: /reliable CV draft/i },
     { code: 'CV_BUILD_INPUT', status: 500, message: /couldn't prepare/i },
     { code: 'CV_BUILD_CONFIG', status: 500, message: /couldn't prepare/i },
     { code: 'CV_BUILD_CONTEXT_TOO_LARGE', status: 500, message: /couldn't prepare/i },
@@ -451,6 +515,7 @@ test('coded Lumia failures return useful retry errors and safe diagnostics witho
     const response = await h.submit();
     assert.equal(response.status, scenario.status, scenario.code);
     assert.equal(response.data.code, scenario.code);
+    assert.equal(response.data.validationReason, scenario.validationReason);
     assert.match(response.data.error, scenario.message);
     const diagnostic = { stage: 'lumia', code: scenario.code };
     if (scenario.providerStatus) diagnostic.providerStatus = scenario.providerStatus;
@@ -463,6 +528,56 @@ test('coded Lumia failures return useful retry errors and safe diagnostics witho
     h.noBuilds();
   }
   assert.ok(h.transactionStates.every(state => state === false));
+});
+
+test('a real provider rate limit returns the retry hint and failing pass without saving an empty build', async t => {
+  const logs = [];
+  const errors = [];
+  t.mock.method(console, 'info', (...items) => logs.push(items));
+  t.mock.method(console, 'error', (...items) => errors.push(items));
+  let calls = 0;
+  const h = await setup(t, {
+    generator: (input, options) => generateCvBuildWithLumia(input, { ...options, apiKey: 'test-only-cv-build-key' }),
+    fetchLumia: async () => {
+      calls++;
+      return new Response('PRIVATE provider quota and CV text', { status: 429, headers: { 'Retry-After': '120' } });
+    }
+  });
+  const response = await h.submit();
+  assert.equal(response.status, 503);
+  assert.equal(response.data.code, 'CV_BUILD_RATE_LIMITED');
+  assert.equal(response.data.retryAfterSeconds, 120);
+  assert.equal(response.headers['retry-after'], '120');
+  assert.equal(calls, 1, 'A long cooldown must not hold the request until its deadline');
+  assert.deepEqual(logs, [['CV Builder analysis.', {
+    stage: 'rate_limit', retryAfterSeconds: 120, providerStage: 'parser', willRetry: false
+  }]]);
+  assert.deepEqual(errors, [['CV Builder creation failed.', {
+    stage: 'lumia', code: 'CV_BUILD_RATE_LIMITED', providerStage: 'parser', providerStatus: 429
+  }]]);
+  assert.doesNotMatch(JSON.stringify([logs, errors, response.data]), /PRIVATE|Alex|example.test|test-only/);
+  assert.equal(h.db.isTransaction, false);
+  h.noBuilds();
+});
+
+test('validation failures expose only safe reason categories and never include arbitrary provider details', async t => {
+  const logs = [];
+  t.mock.method(console, 'error', (...items) => logs.push(items));
+  const h = await setup(t);
+  for (const validationReason of ['PRIVATE CV provider reason', '', { privateCv: cvText }, null]) {
+    h.setGenerator(() => { throw Object.assign(new Error(`PRIVATE failure ${cvText}`), {
+      code: 'CV_BUILD_VALIDATION', validationReason,
+      response: { body: `PRIVATE provider body ${cvText}` }
+    }); });
+    const response = await h.submit();
+    assert.equal(response.status, 502);
+    assert.deepEqual(response.data, {
+      code: 'CV_BUILD_VALIDATION', error: "Lumia couldn't prepare a reliable CV draft. Please try again."
+    });
+    assert.deepEqual(logs.at(-1), ['CV Builder creation failed.', { stage: 'lumia', code: 'CV_BUILD_VALIDATION' }]);
+    assert.doesNotMatch(JSON.stringify([response.data, logs]), /PRIVATE|Alex|example.test/);
+    h.noBuilds();
+  }
 });
 
 test('provider retry hints are bounded and unrecognised error details never become public or logged', async t => {
@@ -480,6 +595,7 @@ test('provider retry hints are bounded and unrecognised error details never beco
   }
   h.setGenerator(() => { throw Object.assign(new Error('PRIVATE source and key'), {
     code: 'PRIVATE_ERROR_CODE', providerStatus: 1000, validationReason: 'PRIVATE_CV',
+    providerStage: 'PRIVATE_PROVIDER_STAGE',
     sqlState: 'PRIVATE_SQL_STATE', sqlMessage: 'PRIVATE MySQL body', sql: `SELECT '${cvText}'`
   }); });
   const response = await h.submit();

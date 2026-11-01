@@ -1,4 +1,5 @@
 const { TextDecoder } = require('node:util');
+const { setTimeout: delay } = require('node:timers/promises');
 const { cvSourceGrounding } = require('./cv-analysis');
 const { PARSER_INSTRUCTIONS, createCvParseContext, deterministicParsedCv, validateCvParserOutput } = require('./cv-parser');
 const { REVIEWER_INSTRUCTIONS, validateCvSuggestions, safeCvRewriteCandidates } = require('./cv-suggestions');
@@ -265,7 +266,9 @@ async function providerJSON(response, signal) {
     await response?.body?.cancel?.().catch(() => {});
     const status = response?.status;
     const details = Number.isInteger(status) && status >= 100 && status <= 599 ? { providerStatus: status } : {};
-    const retry = Number(response?.headers?.get?.('retry-after'));
+    const retryHeader = response?.headers?.get?.('retry-after');
+    const retry = /^\d+(?:\.\d+)?$/.test(retryHeader || '') ? Number(retryHeader) :
+      (Date.parse(retryHeader) - Date.now()) / 1000;
     if (Number.isFinite(retry) && retry > 0) details.retryAfterSeconds = Math.min(300, Math.max(1, Math.ceil(retry)));
     throw builderFailure(status === 429 ? 'CV_BUILD_RATE_LIMITED' : 'CV_BUILD_PROVIDER_HTTP', details);
   }
@@ -321,12 +324,19 @@ function reviewWordingOptions(parsed) {
   }))).slice(0, 20);
 }
 
+function entryEvidence(entry) {
+  // A bounded literal span is enough evidence because the full source entry
+  // and candidate rewrite are checked separately. Never cut mid-word.
+  return entry.text.length <= 2000 ? entry.text : entry.text.slice(0, 2000).replace(/\S+$/, '').trim();
+}
+
 function resolveWordingOptions(suggestions, parsed, options) {
   const populated = (raw, keys) => keys.map(key => raw[key]).find(value =>
     value !== undefined && value !== null &&
     (typeof value !== 'string' || value.trim()) && (!Array.isArray(value) || value.length));
   return suggestions.map(raw => {
-    if (!record(raw) || raw.wordingOptionId === undefined || raw.wordingOptionId === '') return raw;
+    if (!record(raw) || raw.wordingOptionId == null ||
+        (typeof raw.wordingOptionId === 'string' && !raw.wordingOptionId.trim())) return raw;
     const option = typeof raw.wordingOptionId === 'string' && options.find(item => item.id === raw.wordingOptionId.trim());
     const entry = option && parsed.entries.find(item => item.id === option.sourceId);
     if (!entry || (raw.sourceId && raw.sourceId !== entry.id)) return {};
@@ -335,8 +345,40 @@ function resolveWordingOptions(suggestions, parsed, options) {
     return { sourceId: entry.id, sectionName: option.sectionName, suggestionType: option.suggestionType,
       originalText: entry.text, suggestedText: option.suggestedText,
       reason: populated(raw, ['reason', 'explanation', 'rationale']),
-      evidence: populated(raw, ['evidence', 'supportingEvidence', 'supporting_evidence']) };
+      evidence: populated(raw, ['evidence', 'supportingEvidence', 'supporting_evidence']) ?? [entryEvidence(entry)] };
   });
+}
+
+function reviewerSuggestions(review) {
+  if (Array.isArray(review)) return review;
+  if (!record(review)) return null;
+  for (const key of ['suggestions', 'cvSuggestions', 'cv_suggestions', 'improvements']) {
+    if (Array.isArray(review[key])) return review[key];
+  }
+  return null;
+}
+
+function sourceBackedSuggestions(parsed, wordingOptions, trustedSkills, validationContext) {
+  const rewrites = wordingOptions.map(option => {
+    const entry = parsed.entries.find(item => item.id === option.sourceId);
+    return { sectionName: option.sectionName, sourceId: entry.id, suggestionType: option.suggestionType,
+      originalText: entry.text, suggestedText: option.suggestedText,
+      reason: 'Use concise CV wording while preserving the original details.', evidence: [entryEvidence(entry)] };
+  });
+  const skills = trustedSkills.map(skill => ({ sectionName: 'Skills', suggestionType: 'add_verified_skill',
+    originalText: '', suggestedText: skill.name, reason: 'Include this CareerKraft verified skill in your skills section.',
+    evidence: [skill.name] }));
+  // These candidates originate in source text and trusted skill records, never
+  // the rejected model response. Apply the same guards and approval flow.
+  const result = validateCvSuggestions([...rewrites, ...skills], validationContext);
+  const omitted = Math.max(0, result.suggestions.length - 10);
+  if (omitted) {
+    result.suggestions = result.suggestions.slice(0, 10);
+    result.diagnostics.acceptedSuggestions -= omitted;
+    result.diagnostics.rejectedSuggestions += omitted;
+    result.diagnostics.rejectedByReason.limit = (result.diagnostics.rejectedByReason.limit || 0) + omitted;
+  }
+  return result;
 }
 
 async function generateCvBuildWithLumia({ cvText, targetCareer, verifiedSkills, scanAnalysis }, options = {}) {
@@ -359,9 +401,13 @@ async function generateCvBuildWithLumia({ cvText, targetCareer, verifiedSkills, 
     verifiedSkills: trustedSkills,
     scanAnalysis: scanReviewContext(scanAnalysis)
   });
-  const requestBody = (instructions, data) => {
+  // The parser returns IDs rather than rewritten CV text. Its output budget
+  // scales with the source count instead of reserving a full review's tokens.
+  const parserTokens = Math.min(4096, Math.max(1024, 512 + context.units.length * 16));
+  const requestBody = (instructions, data, maxTokens = 4096) => {
     const body = JSON.stringify({
-      model: 'openai/gpt-oss-120b', temperature: 0.2, response_format: { type: 'json_object' }, max_completion_tokens: 8192,
+      model: 'openai/gpt-oss-120b', temperature: 0.2, reasoning_effort: 'low',
+      response_format: { type: 'json_object' }, max_completion_tokens: maxTokens,
       messages: [{ role: 'system', content: instructions }, { role: 'user', content: JSON.stringify(data) }]
     });
     if (Buffer.byteLength(body) > MAX_PROVIDER_BYTES) throw builderFailure('CV_BUILD_CONTEXT_TOO_LARGE', {}, 'The CV builder context is too large.');
@@ -369,33 +415,50 @@ async function generateCvBuildWithLumia({ cvText, targetCareer, verifiedSkills, 
   };
   // Reject oversized trusted context before making either provider request.
   requestBody(REVIEWER_INSTRUCTIONS, reviewData(baseline));
-  const parserBody = requestBody(PARSER_INSTRUCTIONS, { sources: context.units });
+  const parserBody = requestBody(PARSER_INSTRUCTIONS, { sources: context.units }, parserTokens);
   const controller = new AbortController();
+  const expiresAt = Date.now() + timeoutMs;
   let timer;
   const deadline = new Promise((resolve, reject) => {
     timer = setTimeout(() => { controller.abort(); reject(builderFailure('CV_BUILD_TIMEOUT', {}, 'Lumia CV builder timed out.')); }, timeoutMs);
   });
-  const complete = async body => {
-    controller.signal.throwIfAborted();
-    let response;
-    try {
-      response = await (options.fetch || globalThis.fetch)('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey.trim() },
-        body, signal: controller.signal
-      });
-    } catch { throw builderFailure('CV_BUILD_PROVIDER_NETWORK'); }
-    const data = await providerJSON(response, controller.signal);
-    const choice = data?.choices?.[0];
-    const raw = choice?.message?.content;
-    if (data?.error || data?.truncated === true || data?.incomplete === true || choice?.message?.refusal ||
-        (choice?.finish_reason !== undefined && choice.finish_reason !== 'stop') ||
-        typeof raw !== 'string' || !raw.trim() || raw.length > MAX_PROVIDER_BYTES) throw builderFailure('CV_BUILD_INCOMPLETE');
-    try { return JSON.parse(raw); }
-    catch { throw builderFailure('CV_BUILD_INVALID_JSON'); }
+  const complete = async (body, providerStage) => {
+    for (let attempt = 0; ; attempt++) {
+      controller.signal.throwIfAborted();
+      let response;
+      try {
+        response = await (options.fetch || globalThis.fetch)('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey.trim() },
+          body, signal: controller.signal
+        });
+      } catch { throw builderFailure('CV_BUILD_PROVIDER_NETWORK', { providerStage }); }
+      let data;
+      try { data = await providerJSON(response, controller.signal); }
+      catch (error) {
+        error.providerStage = providerStage;
+        if (error.code !== 'CV_BUILD_RATE_LIMITED') throw error;
+        const waitMs = error.retryAfterSeconds * 1000;
+        // Honour the provider's wait only once, leaving time to finish inference.
+        // Longer waits go back to the browser as a cooldown rather than timing out.
+        const willRetry = attempt === 0 && Number.isFinite(waitMs) && waitMs > 0 &&
+          waitMs <= 45000 && waitMs + 5000 < expiresAt - Date.now();
+        diagnostic({ stage: 'rate_limit', providerStage, retryAfterSeconds: error.retryAfterSeconds, willRetry });
+        if (!willRetry) throw error;
+        await delay(waitMs, undefined, { signal: controller.signal });
+        continue;
+      }
+      const choice = data?.choices?.[0];
+      const raw = choice?.message?.content;
+      if (data?.error || data?.truncated === true || data?.incomplete === true || choice?.message?.refusal ||
+          (choice?.finish_reason !== undefined && choice.finish_reason !== 'stop') ||
+          typeof raw !== 'string' || !raw.trim() || raw.length > MAX_PROVIDER_BYTES) throw builderFailure('CV_BUILD_INCOMPLETE', { providerStage });
+      try { return JSON.parse(raw); }
+      catch { throw builderFailure('CV_BUILD_INVALID_JSON', { providerStage }); }
+    }
   };
   try {
     return await Promise.race([deadline, (async () => {
-      const parserOutput = await complete(parserBody);
+      const parserOutput = await complete(parserBody, 'parser');
       let parsed;
       try {
         parsed = validateCvParserOutput(parserOutput, context);
@@ -407,16 +470,22 @@ async function generateCvBuildWithLumia({ cvText, targetCareer, verifiedSkills, 
         diagnostic({ stage: 'fallback', sourceUnits: context.units.length });
       }
       const reviewerContext = reviewData(parsed);
-      const review = await complete(requestBody(REVIEWER_INSTRUCTIONS, reviewerContext));
-      if (!record(review) || !Array.isArray(review.suggestions)) throw builderFailure('CV_BUILD_VALIDATION', { validationReason: 'schema' });
-      const validated = validateCvSuggestions(resolveWordingOptions(review.suggestions, parsed, reviewerContext.wordingOptions), {
+      const review = await complete(requestBody(REVIEWER_INSTRUCTIONS, reviewerContext), 'reviewer');
+      const rawSuggestions = reviewerSuggestions(review);
+      const validationContext = {
         cvText, verifiedSkills: trustedSkills, structuredCv: parsed.structuredCv, sourceEntries: parsed.entries
-      });
+      };
+      let validated = validateCvSuggestions(resolveWordingOptions(rawSuggestions || [], parsed, reviewerContext.wordingOptions), validationContext);
       diagnostic({ stage: 'reviewer', ...validated.diagnostics });
-      // Rejected model output is a failed review, not evidence that the CV
-      // needs no improvements. Keep it retryable instead of saving an empty build.
-      if (review.suggestions.length && !validated.suggestions.length) {
-        throw builderFailure('CV_BUILD_VALIDATION', { validationReason: 'no_usable_suggestions' });
+      if (!validated.suggestions.length) {
+        const recovered = sourceBackedSuggestions(parsed, reviewerContext.wordingOptions, trustedSkills, validationContext);
+        diagnostic({ stage: 'recovery', ...recovered.diagnostics });
+        if (recovered.suggestions.length) validated = recovered;
+        // Do not turn unusable model output into a misleading successful empty
+        // build. A genuine empty review is allowed only when recovery is empty too.
+        else if (!rawSuggestions || rawSuggestions.length) {
+          throw builderFailure('CV_BUILD_VALIDATION', { validationReason: rawSuggestions ? 'no_usable_suggestions' : 'schema' });
+        }
       }
       const output = { structuredCv: parsed.structuredCv, suggestions: validated.suggestions };
       parsedBuilds.set(output, { cvText, snapshot: JSON.stringify(output.structuredCv), entries: structuredClone(parsed.entries) });

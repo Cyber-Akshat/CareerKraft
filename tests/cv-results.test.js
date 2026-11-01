@@ -365,6 +365,106 @@ test('CV build request failures restore the action and never save or navigate to
   }
 });
 
+function cooldownClock(t, window) {
+  let now = Date.UTC(2026, 10, 1);
+  let nextId = 0;
+  const timers = new Map();
+  t.mock.method(window.Date, 'now', () => now);
+  t.mock.method(window, 'setTimeout', callback => { timers.set(++nextId, callback); return nextId; });
+  t.mock.method(window, 'clearTimeout', id => timers.delete(id));
+  return { now: () => now, advance(milliseconds) {
+    now += milliseconds;
+    const callbacks = [...timers.values()];
+    timers.clear();
+    callbacks.forEach(callback => callback());
+  } };
+}
+
+test('rate-limited CV builds show a countdown, block repeat clicks and only retry on a later click', async t => {
+  const h = load(t);
+  h.flush();
+  const clock = cooldownClock(t, h.window);
+  const button = h.element('improveCvButton');
+  const originalLabel = buttonLabel(button);
+  let requests = 0;
+  h.window.fetch = async () => ++requests === 1
+    ? { ...response({ code: 'CV_BUILD_RATE_LIMITED', retryAfterSeconds: 2 }, false), status: 503 }
+    : response();
+  button.click();
+  await settled();
+  assert.equal(button.disabled, true);
+  assert.equal(buttonLabel(button), 'Try again in 2s');
+  assert.match(h.alerts[0], /try again in 2 seconds/i);
+  assert.equal(button.hasAttribute('aria-busy'), false);
+  button.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  h.restore();
+  assert.equal(button.disabled, true, 'History restoration respects the cooldown');
+  clock.advance(1000);
+  assert.equal(buttonLabel(button), 'Try again in 1s');
+  assert.equal(requests, 1);
+  clock.advance(1000);
+  assert.equal(button.disabled, false);
+  assert.equal(buttonLabel(button), originalLabel);
+  assert.equal(requests, 1, 'The countdown never automatically creates a new build');
+  assert.equal(h.storage.getItem(buildStorageKey), null);
+  button.click();
+  await settled();
+  assert.equal(requests, 2);
+  assert.equal(JSON.parse(h.storage.getItem(buildStorageKey)).buildId, 17);
+});
+
+test('CV build cooldown survives a dashboard view reset and a replacement scan', async t => {
+  const h = load(t, result(), { dashboard: true });
+  h.flush();
+  const clock = cooldownClock(t, h.window);
+  const button = h.element('improveCvButton');
+  let requests = 0;
+  h.window.fetch = async () => {
+    requests++;
+    return { ...response({ code: 'CV_BUILD_RATE_LIMITED', retryAfterSeconds: 3 }, false), status: 503 };
+  };
+  button.click();
+  await settled();
+  h.element('scanAnotherButton').click();
+  assert.equal(button.disabled, true);
+  const fresh = { ...result(), scanId: 12 };
+  h.storage.setItem(storageKey, JSON.stringify(fresh));
+  h.window.location.hash = '#cv-results';
+  h.window.dispatchEvent(new h.window.CustomEvent('careerkraft:dashboard-view', { detail: { view: 'cv-results' } }));
+  button.dispatchEvent(new h.window.MouseEvent('click', { bubbles: true }));
+  assert.equal(requests, 1);
+  assert.equal(buttonLabel(button), 'Try again in 3s');
+  h.window.dispatchEvent(new h.window.PageTransitionEvent('pagehide', { persisted: true }));
+  clock.advance(3000);
+  h.restore();
+  assert.equal(button.disabled, false, 'Returning after the deadline restores the action');
+  assert.equal(requests, 1);
+});
+
+test('rate-limit countdown accepts Retry-After seconds or dates and bounds invalid provider hints', async t => {
+  const cases = [
+    { hint: undefined, header: '4', expected: 4 },
+    { hint: undefined, header: 'date', expected: 5 },
+    { hint: 900, header: '1', expected: 300 },
+    { hint: 0.1, header: null, expected: 1 },
+    { hint: -3, header: 'nonsense', expected: 30 },
+    { hint: null, header: null, expected: 30 }
+  ];
+  for (const item of cases) {
+    const h = load(t);
+    h.flush();
+    const clock = cooldownClock(t, h.window);
+    h.window.fetch = async () => ({
+      ...response({ code: 'CV_BUILD_RATE_LIMITED', retryAfterSeconds: item.hint }, false), status: 503,
+      headers: { get: () => item.header === 'date' ? new Date(clock.now() + 5000).toUTCString() : item.header }
+    });
+    h.element('improveCvButton').click();
+    await settled();
+    assert.equal(buttonLabel(h.element('improveCvButton')), `Try again in ${item.expected}s`);
+    assert.equal(h.navigations().length, 0);
+  }
+});
+
 test('CV builder refuses missing or malformed cached scan IDs without contacting the API', async t => {
   const h = load(t);
   h.flush();

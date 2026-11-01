@@ -35,6 +35,8 @@
     let buildCompleted = false;
     let buildGeneration = 0;
     let pendingScanId = null;
+    let buildRetryAt = 0;
+    let buildRetryTimer = null;
     let rewriteCards = [];
     let rewriteIndex = 0;
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -324,6 +326,38 @@
         improveCvButton.disabled = false;
         improveCvButton.removeAttribute("aria-busy");
         improveCvButton.replaceChildren(...improveButtonContent.map(node => node.cloneNode(true)));
+        updateBuildCooldown();
+    }
+
+    function updateBuildCooldown() {
+        clearTimeout(buildRetryTimer);
+        buildRetryTimer = null;
+        if (!buildRetryAt || buildPending) return;
+        const remaining = Math.max(0, Math.ceil((buildRetryAt - Date.now()) / 1000));
+        if (remaining) {
+            improveCvButton.disabled = true;
+            improveCvButton.textContent = `Try again in ${remaining}s`;
+            buildRetryTimer = setTimeout(updateBuildCooldown, Math.min(1000, buildRetryAt - Date.now()));
+        } else {
+            buildRetryAt = 0;
+            improveCvButton.disabled = false;
+            improveCvButton.replaceChildren(...improveButtonContent.map(node => node.cloneNode(true)));
+        }
+    }
+
+    function retrySeconds(response, result) {
+        const bounded = value => {
+            if ((typeof value !== "number" && typeof value !== "string") || value === "") return null;
+            const seconds = Number(value);
+            return Number.isFinite(seconds) && seconds > 0 ? Math.min(300, Math.max(1, Math.ceil(seconds))) : null;
+        };
+        const fromResult = bounded(result?.retryAfterSeconds);
+        if (fromResult) return fromResult;
+        const header = response.headers?.get?.("Retry-After");
+        const fromHeader = bounded(header);
+        if (fromHeader) return fromHeader;
+        const date = typeof header === "string" && Date.parse(header);
+        return (date && bounded((date - Date.now()) / 1000)) || 30;
     }
 
     function discardStaleBuild(generation, scanId) {
@@ -339,7 +373,7 @@
     }
 
     improveCvButton.addEventListener("click", async () => {
-        if (buildPending) return;
+        if (buildPending || Date.now() < buildRetryAt) return;
         const generation = ++buildGeneration;
         let scanId = null;
         buildPending = true;
@@ -372,6 +406,11 @@
             catch { throw new Error("CareerKraft received an invalid CV Builder response."); }
             if (discardStaleBuild(generation, scanId)) return;
             if (!response.ok) {
+                if (result?.code === "CV_BUILD_RATE_LIMITED" || response.status === 429) {
+                    const seconds = retrySeconds(response, result);
+                    throw Object.assign(new Error(`Lumia is busy right now. Please try again in ${seconds} seconds.`),
+                        { retryAfterSeconds: seconds });
+                }
                 throw new Error(typeof result?.error === "string" && result.error.trim()
                     ? result.error : "CareerKraft couldn't prepare your CV improvements right now.");
             }
@@ -384,6 +423,7 @@
             window.location.href = `/cv-builder.html?build=${result.buildId}`;
         } catch (error) {
             if (generation !== buildGeneration || (scanId !== null && discardStaleBuild(generation, scanId))) return;
+            if (error.retryAfterSeconds) buildRetryAt = Date.now() + error.retryAfterSeconds * 1000;
             resetBuildButton();
             console.error("CV Builder preparation failed.");
             alert(error.message || "CareerKraft couldn't prepare your CV improvements right now.");
@@ -398,8 +438,12 @@
         if (rewriteIndex < rewriteCards.length - 1) { rewriteIndex++; updateRewriteNavigation(); }
     });
 
-    window.addEventListener("pagehide", stopAnimations);
+    window.addEventListener("pagehide", () => {
+        stopAnimations();
+        clearTimeout(buildRetryTimer);
+    });
     window.addEventListener("pageshow", event => {
+        updateBuildCooldown();
         if (event.persisted && buildCompleted) resetBuildButton();
         if (event.persisted && (!dashboardMode || window.location.hash === "#cv-results")) loadCvResult();
     });

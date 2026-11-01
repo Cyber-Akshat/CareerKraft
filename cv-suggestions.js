@@ -64,7 +64,9 @@ wordingOptions contains optional, source-backed wording improvements the server 
 Prefer an appropriate wording option when it usefully improves an entry. Return its id as wordingOptionId
 and provide your concise reason and supporting evidence. You may omit originalText and suggestedText
 for a selected option: the server resolves its exact source, section, type and wording. Never alter an
-option's facts. Suggest at most one change per source entry. Do not choose an option just to reach a quota.
+option's facts. Evidence may also be omitted for a selected option; the server uses its original source
+entry as evidence. Any evidence you do provide must be factual. Suggest at most one change per source
+entry. Do not choose an option just to reach a quota.
 For an independently proposed rewrite, omit wordingOptionId and include all source and text fields above.
 
 sourceEntries identifies every original entry by id, field and index. Resolve its exact original text

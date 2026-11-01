@@ -39,6 +39,9 @@ test('CV Builder separates source classification from review and sends canonical
       const request = JSON.parse(options.body);
       assert.equal(request.model, 'openai/gpt-oss-120b');
       assert.equal(request.temperature, 0.2);
+      assert.equal(request.reasoning_effort, 'low');
+      assert.equal(request.max_completion_tokens, requests.length === 0 ? 1024 : 4096,
+        'The ID-only parser needs a smaller output budget than the reviewer');
       assert.deepEqual(request.response_format, { type: 'json_object' });
       assert.equal(request.messages.length, 2);
       assert.match(request.messages[0].content, /untrusted/i);
@@ -132,39 +135,136 @@ test('selected wording options accept populated feedback aliases behind empty pl
   assert.deepEqual(result.suggestions, [{ ...valid().suggestions[0], reason: 'Lead with the action.' }]);
 });
 
-test('an entirely rejected Lumia review fails instead of returning a successful empty build', async () => {
+test('null and blank optional wording IDs do not discard otherwise valid independent rewrites', async () => {
+  const source = `Alex Morgan\nalex@example.test\nProjects\n${sourceBullet}`;
+  const baseline = deterministicParsedCv(createCvParseContext(source));
+  for (const wordingOptionId of [null, '   ']) {
+    const diagnostics = [];
+    let calls = 0;
+    const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+      ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async () =>
+        ++calls === 1 ? reply({ sections: baseline.sections }) :
+          reply({ suggestions: [{ ...valid().suggestions[0], wordingOptionId }] })
+    });
+    assert.deepEqual(output.suggestions, [valid().suggestions[0]]);
+    assert.equal(diagnostics.at(-1).stage, 'reviewer', 'A valid review should not need recovery');
+    assert.equal(diagnostics.at(-1).acceptedSuggestions, 1);
+  }
+});
+
+test('a selected server wording option can derive omitted evidence but never trust invented supplied evidence', async () => {
+  const source = `Alex Morgan\nalex@example.test\nProjects\n${sourceBullet}`;
+  const baseline = deterministicParsedCv(createCvParseContext(source));
+  for (const evidence of [undefined, [], ['Invented AWS employer']]) {
+    const diagnostics = [];
+    let calls = 0;
+    const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+      ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async (url, options) => {
+        if (++calls === 1) return reply({ sections: baseline.sections });
+        const data = JSON.parse(JSON.parse(options.body).messages[1].content);
+        return reply({ suggestions: [{ wordingOptionId: data.wordingOptions[0].id,
+          reason: 'Lead with the action.', evidence }] });
+      }
+    });
+    const reviewer = diagnostics.find(event => event.stage === 'reviewer');
+    if (evidence?.length) {
+      assert.equal(reviewer.acceptedSuggestions, 0);
+      assert.equal(reviewer.rejectedByReason.invalid_evidence, 1);
+      assert.equal(diagnostics.at(-1).stage, 'recovery');
+    } else {
+      assert.equal(reviewer.acceptedSuggestions, 1);
+      assert.equal(diagnostics.at(-1).stage, 'reviewer');
+    }
+    assert.deepEqual(output.suggestions[0].evidence, [sourceBullet]);
+    assert.doesNotMatch(JSON.stringify(output), /Invented AWS employer/);
+  }
+});
+
+test('known suggestion envelope aliases preserve validated suggestions without recovery', async () => {
+  const source = `Alex Morgan\nalex@example.test\nProjects\n${sourceBullet}`;
+  const baseline = deterministicParsedCv(createCvParseContext(source));
+  for (const review of [{ improvements: valid().suggestions }, { cvSuggestions: valid().suggestions }, valid().suggestions]) {
+    const diagnostics = [];
+    let calls = 0;
+    const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+      ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async () =>
+        ++calls === 1 ? reply({ sections: baseline.sections }) : reply(review)
+    });
+    assert.deepEqual(output.suggestions, valid().suggestions);
+    assert.equal(diagnostics.at(-1).stage, 'reviewer');
+  }
+});
+
+test('an entirely rejected Lumia review recovers checked wording and missing verified skills without another AI call', async () => {
   const diagnostics = [];
   const source = `Alex Morgan\nalex@example.test\nProjects\n${sourceBullet}`;
   const baseline = deterministicParsedCv(createCvParseContext(source));
   let calls = 0;
-  await assert.rejects(generateCvBuildWithLumia({ ...context, cvText: source }, {
+  const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
     ...providerOptions, onDiagnostic: value => diagnostics.push(value), fetch: async () => {
       if (++calls === 1) return reply({ sections: baseline.sections });
       return reply({ suggestions: [{ ...valid().suggestions[0], suggestedText: 'Led 20 AWS engineers.' }] });
     }
-  }), error => {
-    assert.equal(error.code, 'CV_BUILD_VALIDATION');
-    assert.equal(error.validationReason, 'no_usable_suggestions');
-    assert.doesNotMatch(JSON.stringify(error), /Alex|AWS|engineers/);
-    return true;
   });
   assert.equal(calls, 2);
-  assert.deepEqual(diagnostics.at(-1), { stage: 'reviewer', rawSuggestions: 1, normalizedSuggestions: 1,
+  assert.deepEqual(diagnostics[1], { stage: 'reviewer', rawSuggestions: 1, normalizedSuggestions: 1,
     acceptedSuggestions: 0, rejectedSuggestions: 1, rejectedByReason: { unsupported_rewrite: 1 } });
+  assert.equal(diagnostics.at(-1).stage, 'recovery');
+  assert.equal(diagnostics.at(-1).acceptedSuggestions, 3);
+  assert.deepEqual(output.structuredCv, baseline.structuredCv);
+  assert.equal(output.suggestions.length, 3);
+  assert.equal(output.suggestions[0].suggestedText, 'Built a dashboard using Python.');
+  assert.deepEqual(output.suggestions.slice(1).map(item => item.suggestedText), ['Research', 'SQL']);
+  assert.doesNotMatch(JSON.stringify(output), /AWS|engineers|20/);
+  assert.deepEqual(validateCvBuildOutput(output, { ...context, cvText: source }), output,
+    'Recovery passes the same final persistence validation');
+});
+
+test('malformed and empty review data recover only changes independently supported by the original CV', async () => {
+  const input = { cvText: 'Alex Morgan\nalex@example.test\nProjects\nI have not used Python.\nSkills\nSQL',
+    verifiedSkills: [{ name: 'SQL', verifiedCount: 1 }, { name: 'Unverified claim', verifiedCount: 0 }] };
+  const baseline = deterministicParsedCv(createCvParseContext(input.cvText));
+  for (const review of [null, {}, { suggestions: [] }]) {
+    let calls = 0;
+    const output = await generateCvBuildWithLumia(input, { ...providerOptions, fetch: async () =>
+      ++calls === 1 ? reply({ sections: baseline.sections }) : reply(review) });
+    assert.equal(calls, 2);
+    assert.deepEqual(output.structuredCv, baseline.structuredCv);
+    assert.equal(output.suggestions.length, 1);
+    assert.equal(output.suggestions[0].suggestedText, 'Not used Python.');
+    assert.deepEqual(output.suggestions[0].evidence, ['I have not used Python.']);
+    assert.equal(output.suggestions[0].suggestionType, 'strengthen_project');
+    assert.deepEqual(validateCvBuildOutput(output, input), output);
+  }
+});
+
+test('unusable reviews still fail when there are no independently checked recovery candidates', async () => {
+  const input = { cvText: 'Alex Morgan\nalex@example.test\nSkills\nPython', verifiedSkills: [] };
+  const baseline = deterministicParsedCv(createCvParseContext(input.cvText));
+  for (const [review, validationReason] of [[{}, 'schema'], [{ suggestions: [{ suggestedText: 'Invented AWS job' }] }, 'no_usable_suggestions']]) {
+    let calls = 0;
+    await assert.rejects(generateCvBuildWithLumia(input, { ...providerOptions, fetch: async () =>
+      ++calls === 1 ? reply({ sections: baseline.sections }) : reply(review) }), error =>
+      error.code === 'CV_BUILD_VALIDATION' && error.validationReason === validationReason);
+    assert.equal(calls, 2);
+  }
 });
 
 test('a genuinely empty Lumia review remains distinct from suggestions rejected by validation', async () => {
+  const input = { cvText: 'Alex Morgan\nalex@example.test\nSkills\nPython', verifiedSkills: [] };
   const diagnostics = [];
-  const baseline = deterministicParsedCv(createCvParseContext(cvText));
+  const baseline = deterministicParsedCv(createCvParseContext(input.cvText));
   let calls = 0;
-  const output = await generateCvBuildWithLumia(context, {
+  const output = await generateCvBuildWithLumia(input, {
     ...providerOptions, onDiagnostic: value => diagnostics.push(value), fetch: async () =>
       ++calls === 1 ? reply({ sections: baseline.sections }) : reply({ suggestions: [] })
   });
   assert.equal(calls, 2);
   assert.deepEqual(output.suggestions, []);
-  assert.deepEqual(diagnostics.at(-1), { stage: 'reviewer', rawSuggestions: 0, normalizedSuggestions: 0,
+  assert.deepEqual(diagnostics[1], { stage: 'reviewer', rawSuggestions: 0, normalizedSuggestions: 0,
     acceptedSuggestions: 0, rejectedSuggestions: 0, rejectedByReason: {} });
+  assert.equal(diagnostics.at(-1).stage, 'recovery');
+  assert.equal(diagnostics.at(-1).acceptedSuggestions, 0);
 });
 
 test('CV Builder can safely improve a source paragraph after omitting its neutral section heading', () => {
@@ -480,7 +580,7 @@ test('CV Builder rejects invalid source, missing credentials and oversized conte
 test('CV Builder rejects failed, empty, malformed, truncated and oversized provider output without leaking source or errors', async () => {
   const bad = [
     () => new Response('PRIVATE_PROVIDER_ERROR_CV_CONTENT', { status: 500 }),
-    () => new Response('not JSON'), () => new Response('{}'), () => reply({}),
+    () => new Response('not JSON'), () => new Response('{}'),
     () => reply(valid(), { finish_reason: 'length' }),
     () => reply(valid(), { message: { content: '' } }),
     () => reply(valid(), { message: { content: 'not JSON' } }),
@@ -512,6 +612,110 @@ test('CV Builder provider failures retain safe diagnostic categories without pro
     });
   }
   assert.notEqual(errors[0].code, errors[1].code, 'Rate limiting and invalid JSON need distinct diagnostic categories');
+});
+
+test('a transient rate limit retries only the failed pass after the provider wait', async () => {
+  const source = `Alex Morgan\nalex@example.test\nProjects\n${sourceBullet}`;
+  for (const limitedPass of ['parser', 'reviewer']) {
+    const baseline = deterministicParsedCv(createCvParseContext(source));
+    const requests = [];
+    const diagnostics = [];
+    const output = await generateCvBuildWithLumia({ ...context, cvText: source }, {
+      ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async (url, options) => {
+        const isParser = JSON.parse(options.body).messages[0].content.includes('document parser');
+        const pass = isParser ? 'parser' : 'reviewer';
+        const repeated = requests.some(request => request.pass === pass);
+        requests.push({ pass, body: options.body, at: Date.now() });
+        if (pass === limitedPass && !repeated) return new Response('PRIVATE rate limit', {
+          status: 429, headers: { 'Retry-After': '1' }
+        });
+        return isParser ? reply({ sections: baseline.sections }) : reply({ suggestions: valid().suggestions });
+      }
+    });
+    assert.equal(requests.length, 3);
+    const retried = requests.filter(request => request.pass === limitedPass);
+    assert.equal(retried.length, 2);
+    assert.equal(retried[0].body, retried[1].body);
+    assert.ok(retried[1].at - retried[0].at >= 900, 'Do not retry before the requested cooldown');
+    assert.deepEqual(diagnostics.find(event => event.stage === 'rate_limit'), {
+      stage: 'rate_limit', providerStage: limitedPass, retryAfterSeconds: 1, willRetry: true
+    });
+    assert.deepEqual(output.suggestions, valid().suggestions);
+  }
+});
+
+test('a repeated rate limit preserves the final retry hint without restarting the parser', async () => {
+  const baseline = deterministicParsedCv(createCvParseContext(cvText));
+  const diagnostics = [];
+  let calls = 0;
+  await assert.rejects(generateCvBuildWithLumia(context, {
+    ...providerOptions, onDiagnostic: event => diagnostics.push(event), fetch: async () => {
+      if (++calls === 1) return reply({ sections: baseline.sections });
+      return new Response('PRIVATE quota detail', { status: 429, headers: { 'Retry-After': '1' } });
+    }
+  }), error => {
+    assert.equal(error.code, 'CV_BUILD_RATE_LIMITED');
+    assert.equal(error.providerStage, 'reviewer');
+    assert.equal(error.retryAfterSeconds, 1);
+    assert.doesNotMatch(JSON.stringify(error), /PRIVATE|Alex|test-only/);
+    return true;
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(diagnostics.filter(event => event.stage === 'rate_limit').map(event => event.willRetry), [true, false]);
+});
+
+test('unknown, excessive and deadline-exceeding rate limit waits return immediately without retry', async () => {
+  for (const [hint, timeoutMs, expectedHint] of [[null, 60000, undefined], ['invalid', 60000, undefined],
+    ['120', 60000, 120], ['1', 5000, 1], ['999999', 60000, 300]]) {
+    let calls = 0;
+    const diagnostics = [];
+    await assert.rejects(generateCvBuildWithLumia(context, {
+      ...providerOptions, timeoutMs, onDiagnostic: event => diagnostics.push(event), fetch: async () => {
+        calls++;
+        return new Response('PRIVATE quota', { status: 429, headers: hint ? { 'Retry-After': hint } : {} });
+      }
+    }), error => {
+      assert.equal(error.code, 'CV_BUILD_RATE_LIMITED');
+      assert.equal(error.retryAfterSeconds, expectedHint);
+      assert.equal(error.providerStage, 'parser');
+      return true;
+    });
+    assert.equal(calls, 1);
+    assert.equal(diagnostics[0].willRetry, false);
+  }
+});
+
+test('HTTP-date provider retry hints are returned as bounded seconds', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1800000000000 });
+  const retryAt = new Date(Date.now() + 90000).toUTCString();
+  let calls = 0;
+  await assert.rejects(generateCvBuildWithLumia(context, {
+    ...providerOptions, fetch: async () => {
+      calls++;
+      return new Response('PRIVATE quota', { status: 429, headers: { 'Retry-After': retryAt } });
+    }
+  }), error => error.code === 'CV_BUILD_RATE_LIMITED' && error.retryAfterSeconds === 90);
+  assert.equal(calls, 1);
+});
+
+test('deadline cancellation interrupts a scheduled rate limit retry without another provider call', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const waiting = Promise.withResolvers();
+  let signal;
+  let calls = 0;
+  const build = generateCvBuildWithLumia(context, {
+    ...providerOptions, onDiagnostic: event => { if (event.willRetry) waiting.resolve(); },
+    fetch: async (url, options) => {
+      calls++;
+      signal = options.signal;
+      return new Response('PRIVATE quota', { status: 429, headers: { 'Retry-After': '10' } });
+    }
+  });
+  await waiting.promise;
+  t.mock.timers.tick(60001);
+  await assert.rejects(build, error => error.code === 'CV_BUILD_TIMEOUT');
+  assert.equal(signal.aborted, true);
+  assert.equal(calls, 1);
 });
 
 test('CV Builder has a deadline even when the provider ignores cancellation', async () => {
