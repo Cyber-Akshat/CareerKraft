@@ -60,11 +60,18 @@ async function setup(t, { generator = validOutput, fetchLumia } = {}) {
     });
     return { status: response.status, headers: Object.fromEntries(response.headers), data: await response.json() };
   }
+  async function patch(buildId, suggestionId, body) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/cv/build/${buildId}/suggestions/${suggestionId}`, {
+      method: 'PATCH', headers: { Origin: 'http://localhost:3000', 'Content-Type': 'application/json',
+        Cookie: 'ck_session=cv-build-session-1' }, body: JSON.stringify(body)
+    });
+    return { status: response.status, data: await response.json() };
+  }
   const noBuilds = () => {
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM cv_builds').get().count, 0);
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM cv_build_suggestions').get().count, 0);
   };
-  return { db, inputs, transactionStates, submit, noBuilds, setGenerator: callback => { generate = callback; } };
+  return { db, inputs, transactionStates, submit, patch, noBuilds, setGenerator: callback => { generate = callback; } };
 }
 
 test('CV builds use the owned scan and canonical profile, then persist all pending suggestions in order', async t => {
@@ -80,7 +87,7 @@ test('CV builds use the owned scan and canonical profile, then persist all pendi
   assert.equal(response.data.targetCareer, 'Software Developer');
   assert.deepEqual(h.inputs, [{ cvText, targetCareer: 'Software Developer', verifiedSkills: [
     { name: 'Research', verifiedCount: 3 }, { name: 'Network Analysis', verifiedCount: 2 }
-  ] }]);
+  ], scanAnalysis: null }]);
   assert.deepEqual(h.transactionStates, [false], 'The Lumia request happens outside a database transaction');
   assert.equal(h.db.isTransaction, false);
   assert.deepEqual(response.data.structuredCv, expected.structuredCv);
@@ -137,12 +144,100 @@ test('a student without a selected career or verified skills can create a build 
   assert.equal(response.status, 200);
   assert.equal(response.data.targetCareer, null);
   assert.deepEqual(response.data.suggestions, []);
-  assert.deepEqual(h.inputs, [{ cvText, targetCareer: null, verifiedSkills: [] }]);
+  assert.deepEqual(h.inputs, [{ cvText, targetCareer: null, verifiedSkills: [], scanAnalysis: null }]);
   const build = h.db.prepare('SELECT * FROM cv_builds WHERE id=?').get(response.data.buildId);
   assert.equal(build.target_career, null);
   assert.equal(build.status, 'reviewing');
   assert.equal(build.total_suggestions, 0);
   assert.equal(h.db.prepare('SELECT COUNT(*) AS count FROM cv_build_suggestions').get().count, 0);
+});
+
+test('the reviewer receives validated analysis from its owned scan for SQLite strings and MySQL JSON objects', async t => {
+  const h = await setup(t);
+  const analysis = {
+    overallScore: 78, scores: { structure: 81, clarity: 79, evidence: 64, relevance: 82 },
+    strengths: ['Relevant technical project.'], priorityImprovements: ['Clarify the project description.'],
+    verifiedSkillsMissingFromCv: ['Research', 'Python', 'Private Skill', 'Unverified Claim'],
+    bulletRewrites: [
+      { original: sourceBullet, improved: 'Built a dashboard using Python.', reason: 'Start with the action.' },
+      { original: sourceBullet, improved: 'Led a team of 20 engineers.', reason: 'Unsupported.' }
+    ], careerAlignmentSummary: 'The project supports the selected career.',
+    privateProviderField: 'PRIVATE must not enter the reviewer context'
+  };
+  h.db.prepare('UPDATE cv_scans SET analysis_json = ? WHERE id = 10').run(JSON.stringify(analysis));
+  const expected = {
+    overallScore: 78, scores: analysis.scores, strengths: analysis.strengths,
+    priorityImprovements: analysis.priorityImprovements,
+    verifiedSkillsMissingFromCv: ['Research'], bulletRewrites: [analysis.bulletRewrites[0]],
+    careerAlignmentSummary: analysis.careerAlignmentSummary
+  };
+  const browser = { scanId: 10, scanAnalysis: { overallScore: 100, strengths: ['Browser invention.'] } };
+  assert.equal((await h.submit(browser)).status, 200);
+  assert.deepEqual(h.inputs.at(-1).scanAnalysis, expected);
+
+  const prepare = h.db.prepare.bind(h.db);
+  t.mock.method(h.db, 'prepare', sql => {
+    const statement = prepare(sql);
+    if (!/SELECT id, extracted_text, analysis_json FROM cv_scans/.test(sql)) return statement;
+    return { async get(...args) {
+      const row = await statement.get(...args);
+      return row ? { ...row, analysis_json: analysis } : row;
+    } };
+  });
+  assert.equal((await h.submit(browser)).status, 200);
+  assert.deepEqual(h.inputs.at(-1).scanAnalysis, expected);
+  assert.doesNotMatch(JSON.stringify(h.inputs), /PRIVATE|Browser invention/);
+});
+
+test('analysis diagnostics expose only fixed stage names and bounded counters', async t => {
+  const logs = [];
+  t.mock.method(console, 'info', (...items) => logs.push(items));
+  const h = await setup(t, { generator: (input, options) => {
+    options.onDiagnostic({ stage: 'parser', sourceUnits: 7, cvText: 'PRIVATE CV', providerBody: 'PRIVATE provider' });
+    options.onDiagnostic({ stage: 'reviewer', rawSuggestions: 3, normalizedSuggestions: 2,
+      acceptedSuggestions: 1, rejectedSuggestions: 2, sourceUnits: -1, unknown: 'PRIVATE detail',
+      rejectedByReason: { unsupported_rewrite: 2, invalid_skill: -1, invalid_type: 'PRIVATE', 'PRIVATE CV': 6 } });
+    options.onDiagnostic({ stage: 'PRIVATE CV', rawSuggestions: 5 });
+    options.onDiagnostic({ stage: 'fallback', sourceUnits: 'PRIVATE text', rawSuggestions: Infinity });
+    return validOutput();
+  } });
+  assert.equal((await h.submit()).status, 200);
+  assert.deepEqual(logs, [
+    ['CV Builder analysis.', { stage: 'parser', sourceUnits: 7 }],
+    ['CV Builder analysis.', { stage: 'reviewer', rawSuggestions: 3, normalizedSuggestions: 2,
+      acceptedSuggestions: 1, rejectedSuggestions: 2, rejectedByReason: { unsupported_rewrite: 2 } }],
+    ['CV Builder analysis.', { stage: 'fallback' }],
+    ['CV Builder analysis.', { stage: 'validation', rawSuggestions: 2, acceptedSuggestions: 2, rejectedSuggestions: 0 }]
+  ]);
+  assert.doesNotMatch(JSON.stringify(logs), /PRIVATE|providerBody|cvText/);
+});
+
+test('final validation rejects an unusable review without saving a misleading empty build and permits retry', async t => {
+  const logs = [];
+  const errors = [];
+  t.mock.method(console, 'info', (...items) => logs.push(items));
+  t.mock.method(console, 'error', (...items) => errors.push(items));
+  const h = await setup(t, { generator: () => ({ structuredCv: validOutput().structuredCv,
+    suggestions: [{ ...validOutput().suggestions[0], suggestedText: 'Led 20 AWS engineers.' }] }) });
+  const response = await h.submit();
+  assert.equal(response.status, 502);
+  assert.equal(response.data.code, 'CV_BUILD_VALIDATION');
+  assert.match(response.data.error, /try again/i);
+  h.noBuilds();
+  assert.equal(h.db.isTransaction, false);
+  assert.deepEqual(logs, [['CV Builder analysis.', {
+    stage: 'validation', rawSuggestions: 1, acceptedSuggestions: 0, rejectedSuggestions: 1
+  }]]);
+  assert.deepEqual(errors, [['CV Builder creation failed.', {
+    stage: 'validation', code: 'CV_BUILD_VALIDATION', validationReason: 'no_usable_suggestions'
+  }]]);
+  assert.doesNotMatch(JSON.stringify([response.data, logs, errors]), /Alex|Python|AWS|engineers/);
+
+  h.setGenerator(validOutput);
+  const retry = await h.submit();
+  assert.equal(retry.status, 200);
+  assert.equal(retry.data.suggestions.length, 2);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS count FROM cv_builds').get().count, 1);
 });
 
 test('the real Lumia helper recovers source layout through HTTP before saving only safe pending suggestions', async t => {
@@ -165,16 +260,23 @@ test('the real Lumia helper recovers source layout through HTTP before saving on
       providerCalls.push({ url, body: JSON.parse(options.body) });
       assert.equal(options.headers.Authorization, 'Bearer test-only-cv-build-key');
       return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop',
-        message: { content: JSON.stringify(model) } }] }), { headers: { 'Content-Type': 'application/json' } });
+        message: { content: JSON.stringify(providerCalls.length === 1 ? {} : { suggestions: model.suggestions }) } }] }),
+      { headers: { 'Content-Type': 'application/json' } });
     }
   });
   h.db.prepare('UPDATE cv_scans SET extracted_text = ? WHERE id = ?').run(source, 10);
   const response = await h.submit();
   assert.equal(response.status, 200, 'The generated fallback must also pass the route validation before persistence');
   assert.equal(response.data.success, true);
-  assert.equal(providerCalls.length, 1);
+  assert.equal(providerCalls.length, 2);
   assert.equal(providerCalls[0].url, 'https://api.groq.com/openai/v1/chat/completions');
-  assert.equal(JSON.parse(providerCalls[0].body.messages[1].content).cvText, source);
+  const parserContext = JSON.parse(providerCalls[0].body.messages[1].content);
+  assert.ok(Array.isArray(parserContext.sources));
+  assert.ok(parserContext.sources.every(unit => typeof unit.id === 'string' && typeof unit.text === 'string'));
+  const reviewerContext = JSON.parse(providerCalls[1].body.messages[1].content);
+  assert.ok(Array.isArray(reviewerContext.sourceEntries));
+  assert.equal(reviewerContext.targetCareer, 'Software Developer');
+  assert.equal(reviewerContext.scanAnalysis, null);
   assert.deepEqual(h.transactionStates, [false], 'Model generation and source recovery happen before the transaction');
   assert.deepEqual(response.data.structuredCv, {
     name: 'Alex Morgan', headline: '', contact: ['London, UK', 'alex@example.test', 'github.com/alex'],
@@ -198,6 +300,70 @@ test('the real Lumia helper recovers source layout through HTTP before saving on
   assert.equal(saved[0].id, suggestion.id);
   assert.equal(saved[0].status, 'pending');
   assert.equal(saved[0].suggested_text, 'Research');
+  assert.equal(h.db.isTransaction, false);
+});
+
+test('a source-grounded two-pass rewrite survives route validation and applies only after an explicit review decision', async t => {
+  const original = 'I used Python and Flask to build a dashboard.';
+  const improved = 'Built a dashboard using Python and Flask.';
+  const source = `Alex Morgan\nComputing student\nalex@example.test\n\nProjects\n${original}\n\nSkills\nPython\nFlask`;
+  let calls = 0;
+  const h = await setup(t, {
+    generator: (input, options) => generateCvBuildWithLumia(input, { ...options, apiKey: 'test-only-cv-build-key' }),
+    fetchLumia: async () => {
+      calls++;
+      const content = calls === 1 ? {} : { suggestions: [
+        { sectionName: 'Projects', suggestionType: 'strengthen_project', originalText: original,
+          suggestedText: improved, reason: 'Lead with the action while retaining both technologies.', evidence: [original] },
+        { sectionName: 'Skills', suggestionType: 'add_verified_skill', originalText: '', suggestedText: 'Research',
+          reason: 'Show a verified skill separately from project experience.', evidence: ['Research'] },
+        { sectionName: 'Projects', suggestionType: 'strengthen_project', originalText: original,
+          suggestedText: 'Led 20 engineers to improve revenue by 80%.', reason: 'Unsupported outcome.', evidence: [original] }
+      ] };
+      return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(content) } }] }),
+        { headers: { 'Content-Type': 'application/json' } });
+    }
+  });
+  h.db.prepare('UPDATE cv_scans SET extracted_text = ? WHERE id = 10').run(source);
+  const created = await h.submit();
+  assert.equal(created.status, 200);
+  assert.equal(calls, 2);
+  assert.equal(created.data.suggestions.length, 2, 'The unsupported outcome must be rejected before persistence');
+  const { buildId } = created.data;
+  const rewrite = created.data.suggestions.find(item => item.sectionName === 'Projects');
+  const skill = created.data.suggestions.find(item => item.suggestionType === 'add_verified_skill');
+  assert.equal(rewrite.suggestedText, improved);
+  assert.deepEqual(created.data.structuredCv.projects, [original]);
+  const readBuild = () => h.db.prepare('SELECT * FROM cv_builds WHERE id=?').get(buildId);
+  assert.deepEqual(JSON.parse(readBuild().current_cv_json).projects, [original]);
+  assert.equal(readBuild().original_cv_text, source);
+
+  const forged = await h.patch(buildId, rewrite.id, {
+    status: 'accepted', finalText: 'Led 20 engineers.', structuredCv: { projects: ['Browser invention'] }
+  });
+  assert.equal(forged.status, 400);
+  assert.deepEqual(JSON.parse(readBuild().current_cv_json).projects, [original]);
+  assert.equal(readBuild().accepted_count, 0);
+
+  const accepted = await h.patch(buildId, rewrite.id, { status: 'accepted', finalText: improved });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(accepted.data.structuredCv.projects, [improved]);
+  assert.deepEqual(accepted.data.progress, { accepted: 1, edited: 0, rejected: 0, pending: 1, reviewed: 1 });
+  assert.equal(accepted.data.buildStatus, 'reviewing');
+  assert.ok(!accepted.data.structuredCv.skills.includes('Research'), 'Pending verified skills are never silently applied');
+
+  const rejected = await h.patch(buildId, skill.id, { status: 'rejected', finalText: 'Invented qualification' });
+  assert.equal(rejected.status, 200);
+  assert.equal(rejected.data.suggestion.finalText, '');
+  assert.deepEqual(rejected.data.structuredCv.projects, [improved]);
+  assert.ok(!rejected.data.structuredCv.skills.includes('Research'));
+  assert.deepEqual(rejected.data.progress, { accepted: 1, edited: 0, rejected: 1, pending: 0, reviewed: 2 });
+  assert.equal(rejected.data.buildStatus, 'reviewed');
+  const saved = readBuild();
+  assert.equal(saved.original_cv_text, source);
+  assert.deepEqual(JSON.parse(saved.current_cv_json), rejected.data.structuredCv);
+  assert.deepEqual([saved.total_suggestions, saved.accepted_count, saved.edited_count, saved.rejected_count], [2, 1, 0, 1]);
+  assert.doesNotMatch(saved.current_cv_json, /20 engineers|80%|Invented|Browser invention/);
   assert.equal(h.db.isTransaction, false);
 });
 
@@ -330,7 +496,7 @@ test('database failures identify the source stage using only allowlisted driver 
   t.mock.method(console, 'error', (...items) => logs.push(items));
   const prepare = h.db.prepare.bind(h.db);
   t.mock.method(h.db, 'prepare', sql => {
-    if (/SELECT id, extracted_text FROM cv_scans/.test(sql)) return {
+    if (/SELECT id, extracted_text, analysis_json FROM cv_scans/.test(sql)) return {
       get() {
         throw Object.assign(new Error(`PRIVATE source ${cvText}`), {
           code: 'ER_NO_SUCH_TABLE', sqlState: '42S02', sqlMessage: 'PRIVATE schema information', sql

@@ -1597,18 +1597,50 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
     let transactionStarted = false;
     let stage = 'source';
     try {
-      const scan = await db.prepare(`SELECT id, extracted_text FROM cv_scans
+      const scan = await db.prepare(`SELECT id, extracted_text, analysis_json FROM cv_scans
         WHERE id = ? AND user_id = ? LIMIT 1`).get(scanId, user.id);
       if (!scan) return res.status(404).json({ error: 'CV scan not found.' });
       stage = 'profile';
       const { targetCareer, verifiedSkills } = await cvProfileContext(user.id);
+      let scanAnalysis = null;
+      try {
+        const encoded = typeof scan.analysis_json === 'string' ? scan.analysis_json : JSON.stringify(scan.analysis_json);
+        if (typeof encoded === 'string' && encoded.length <= 128 * 1024) {
+          scanAnalysis = validateCvAnalysis(JSON.parse(encoded), { cvText: scan.extracted_text, verifiedSkills });
+        }
+      } catch { /* Legacy scans may have no usable analysis; the CV remains the source of facts. */ }
       // Model latency must not hold a database transaction or apply any edits.
       stage = 'lumia';
+      const onDiagnostic = value => {
+        if (!value || !['parser', 'reviewer', 'fallback', 'validation'].includes(value.stage)) return;
+        const diagnostic = { stage: value.stage };
+        for (const key of ['sourceUnits', 'rawSuggestions', 'normalizedSuggestions', 'acceptedSuggestions', 'rejectedSuggestions']) {
+          if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 10000) diagnostic[key] = value[key];
+        }
+        const rejectedByReason = {};
+        for (const reason of ['invalid_schema', 'invalid_section', 'invalid_type', 'invalid_evidence', 'unknown_source',
+          'ambiguous_source', 'source_mismatch', 'unsupported_rewrite', 'invalid_skill', 'duplicate', 'limit']) {
+          const count = value.rejectedByReason?.[reason];
+          if (Number.isSafeInteger(count) && count > 0 && count <= 10000) rejectedByReason[reason] = count;
+        }
+        if (Object.keys(rejectedByReason).length) diagnostic.rejectedByReason = rejectedByReason;
+        // Counts explain whether Lumia returned no suggestions or validation
+        // discarded them, without exposing CV text, model output or evidence.
+        console.info('CV Builder analysis.', diagnostic);
+      };
       const rawOutput = await (options.generateCvBuildWithLumia || generateCvBuildWithLumia)(
-        { cvText: scan.extracted_text, targetCareer, verifiedSkills }, { fetch: fetchLumia }
+        { cvText: scan.extracted_text, targetCareer, verifiedSkills, scanAnalysis }, { fetch: fetchLumia, onDiagnostic }
       );
       stage = 'validation';
       const output = validateCvBuildOutput(rawOutput, { cvText: scan.extracted_text, verifiedSkills });
+      onDiagnostic({ stage: 'validation', rawSuggestions: rawOutput.suggestions.length,
+        acceptedSuggestions: output.suggestions.length,
+        rejectedSuggestions: rawOutput.suggestions.length - output.suggestions.length });
+      if (rawOutput.suggestions.length && !output.suggestions.length) {
+        throw Object.assign(new Error('No usable CV suggestions.'), {
+          code: 'CV_BUILD_VALIDATION', validationReason: 'no_usable_suggestions'
+        });
+      }
       const now = Date.now();
 
       stage = 'transaction';
@@ -1666,7 +1698,7 @@ CREATE INDEX IF NOT EXISTS idx_lumia_messages_conversation
       if (Number.isInteger(error?.providerStatus) && error.providerStatus >= 100 && error.providerStatus <= 599) {
         diagnostics.providerStatus = error.providerStatus;
       }
-      if (['schema', 'unsupported_facts', 'missing_source', 'no_source'].includes(error?.validationReason)) {
+      if (['schema', 'unsupported_facts', 'missing_source', 'no_source', 'no_usable_suggestions'].includes(error?.validationReason)) {
         diagnostics.validationReason = error.validationReason;
       }
       if (databaseCodes.has(error?.code)) {
