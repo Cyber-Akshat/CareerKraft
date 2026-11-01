@@ -472,20 +472,28 @@ test('a build with no suggestions renders a complete empty review state with saf
   assert.equal(h.calls.length, 0);
 });
 
-test('finishing confirms unreviewed suggestions and exports only the current approved CV snapshot', async t => {
+test('choosing a template confirms unreviewed suggestions and exports only approved changes while preserving the template choice', async t => {
   const h = load(t);
+  const templateChoice = JSON.stringify({ buildId: 17, templateId: 'technical' });
+  h.storage.setItem('careerkraft-cv-template', templateChoice);
+  assert.equal(h.element('finishButton').textContent, 'Choose a template');
+  await click(h, 'acceptButton');
   h.confirm(false);
   await click(h, 'finishButton');
   assert.equal(h.confirms.length, 1);
+  assert.match(h.confirms[0], /2 suggestion\(s\).*Continue to templates/i);
   assert.equal(h.storage.getItem(finalKey), null);
   assert.equal(h.navigations().length, 0);
   h.confirm(true);
   await click(h, 'finishButton');
   const final = JSON.parse(h.storage.getItem(finalKey));
   assert.equal(final.buildId, 17);
-  assert.deepEqual(final.structuredCv, fixture().structuredCv);
+  const expectedCv = fixture().structuredCv;
+  expectedCv.projects[0] = improvedBullet;
+  assert.deepEqual(final.structuredCv, expectedCv);
+  assert.equal(h.storage.getItem('careerkraft-cv-template'), templateChoice);
   assert.ok(h.navigations().length > 0);
-  assert.equal(h.calls.length, 0);
+  assert.equal(h.calls.length, 1, 'Choosing a template does not send another model or save request');
 });
 
 test('a final CV storage failure keeps the review open without navigating to an unavailable snapshot', async t => {

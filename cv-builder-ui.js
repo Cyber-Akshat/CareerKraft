@@ -352,7 +352,7 @@
     elements.finishButton.addEventListener("click", () => {
         if (!active || busy || editing || !buildData) return;
         const pending = buildData.suggestions.filter(item => item.status === "pending").length;
-        if (pending && !confirm(`You still have ${pending} suggestion(s) to review. Finish anyway?`)) return;
+        if (pending && !confirm(`You still have ${pending} suggestion(s) to review. Continue to templates with your current CV?`)) return;
         try {
             sessionStorage.setItem(FINAL_KEY, JSON.stringify({ buildId: buildData.buildId, structuredCv: buildData.structuredCv }));
         } catch { alert("CareerKraft couldn't keep your final CV in this browser. Please try again before leaving this page."); return; }

@@ -76,7 +76,7 @@
                 <p class="eyebrow" id="previewEyebrow">CV Builder preview</p>
                 <h1>Your improved CV</h1>
                 <p class="topbar-description">
-                    Review the final version before exporting or making more changes.
+                    Choose a template, check your final CV, then save it as a PDF.
                 </p>
             </div>
             <div class="topbar-actions">
@@ -84,8 +84,8 @@
                     Back to Builder
                 </button>
                 <button type="button" class="primary-button" id="downloadButton"
-                        title="PDF download is coming soon" disabled>
-                    Download CV
+                        title="Choose Save as PDF in the print dialog" disabled>
+                    Save as PDF
                 </button>
             </div>
         </header>
@@ -104,6 +104,37 @@
                 </div>
             </div>
 
+            <section class="template-chooser" id="templateChooser" aria-labelledby="templateHeading">
+                <div class="template-chooser-header">
+                    <div>
+                        <p class="eyebrow">STYLE YOUR CV</p>
+                        <h2 id="templateHeading">Choose your template</h2>
+                        <p>Find the style that suits your next step. Select a template to preview your CV below.</p>
+                    </div>
+                    <div class="template-category-control">
+                        <label for="templateCategory">Browse categories</label>
+                        <select id="templateCategory">
+                            <option value="all">All categories</option>
+                            <option value="classic">Classic</option>
+                            <option value="modern">Modern</option>
+                            <option value="minimal">Minimal</option>
+                            <option value="technical">Technical</option>
+                            <option value="academic">Academic</option>
+                            <option value="creative">Creative</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="template-ats-note">Designed for ATS readability: one column, clear section headings and selectable text.</p>
+                <fieldset class="template-options">
+                    <legend class="template-visually-hidden">Choose a CV template</legend>
+                    <div class="template-grid" id="templateGrid"></div>
+                </fieldset>
+                <div class="template-chooser-footer">
+                    <p class="template-status" id="templateStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+                    <a class="template-preview-link" href="#cvDocument">View CV preview <span aria-hidden="true">&#8595;</span></a>
+                </div>
+            </section>
+
             <div class="preview-layout">
 
                 <!-- FINAL CV DOCUMENT -->
@@ -111,14 +142,18 @@
                     <div class="document-toolbar">
                         <div>
                             <span class="toolbar-label">Final CV</span>
-                            <strong>Preview</strong>
+                            <strong id="templateName">Classic</strong>
+                            <p class="template-document-description" id="templateDescription">Traditional typography and a clean, professional layout.</p>
                         </div>
-                        <button type="button" class="secondary-button small" id="printButton" disabled>
-                            Print preview
-                        </button>
+                        <div class="document-export-controls">
+                            <button type="button" class="secondary-button small" id="printButton" disabled>
+                                Print preview
+                            </button>
+                            <p>Save as PDF opens your browser print dialog.</p>
+                        </div>
                     </div>
 
-                    <article class="cv-document" id="cvDocument" aria-label="Your final CV">
+                    <article class="cv-document" id="cvDocument" data-template="classic" aria-label="Your final CV">
                         <header class="cv-header">
                             <h1 id="cvName">Your Name</h1>
                             <p class="cv-headline" id="cvHeadline"></p>

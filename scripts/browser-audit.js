@@ -14,6 +14,20 @@ const accessibilityOnly = process.env.BROWSER_AUDIT_SCOPE === 'accessibility';
 const tourOnly = process.env.BROWSER_AUDIT_SCOPE === 'tour';
 const cookiesOnly = process.env.BROWSER_AUDIT_SCOPE === 'cookies';
 const loadingOnly = process.env.BROWSER_AUDIT_SCOPE === 'loading';
+const cvTemplatesOnly = process.env.BROWSER_AUDIT_SCOPE === 'cv-templates';
+const cvTemplateFixture = {
+  buildId: 17,
+  structuredCv: {
+    name: 'Alex Morgan', headline: 'Computing student',
+    contact: ['alex@example.test', 'github.com/alex-morgan'],
+    profile: 'Computing student interested in cybersecurity and software development.',
+    education: ['Digital T Level in Software Development, Example College, 2025–2027.'],
+    experience: ['Documented student project requirements with classmates.'],
+    projects: ['Built a dashboard using Python and Flask.'],
+    skills: ['Python', 'Flask', 'Research'],
+    certifications: ['Introduction to Cybersecurity course completion, 2025.']
+  }
+};
 const artifacts = process.env.BROWSER_ARTIFACTS ? path.resolve(process.env.BROWSER_ARTIFACTS) : null;
 if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
 const chrome = [process.env.BROWSER_PATH,
@@ -64,6 +78,15 @@ function connect(url) {
 
 function accountFixtures(fixture) {
   const scenario = new URLSearchParams(location.search).get('audit');
+  if (scenario === 'cv-templates') {
+    if (!sessionStorage.getItem('careerkraft-final-cv')) {
+      sessionStorage.setItem('careerkraft-final-cv', JSON.stringify(fixture.cv));
+    }
+    if (!sessionStorage.getItem('careerkraft-cv-build')) {
+      sessionStorage.setItem('careerkraft-cv-build', JSON.stringify({ ...fixture.cv, success: true,
+        targetCareer: 'Software Developer', suggestions: [{ id: 101, status: 'accepted' }] }));
+    }
+  }
   const career = { id: 'software-developer', title: 'Software Developer', category: 'Technology',
     description: 'Build websites, apps and digital products by solving problems with code.', score: 88, reasons: ['Technology', 'Problem solving'] };
   const step = { id: 24, title: 'Explore software development', description: 'Learn about the role.', phaseNumber: 1,
@@ -119,7 +142,7 @@ async function run() {
     cdp = await connect(target.webSocketDebuggerUrl);
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
-    const fixture = { module: require('../tests/fixtures/module') };
+    const fixture = { module: require('../tests/fixtures/module'), cv: cvTemplateFixture };
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: `(${accountFixtures})(${JSON.stringify(fixture)})` });
     const evaluate = async expression => {
       const result = await cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
@@ -164,6 +187,149 @@ async function run() {
       await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 });
       await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 });
       await pause(50);
+    };
+    const auditCvTemplates = async () => {
+      const templateIds = ['classic', 'modern', 'minimal', 'technical', 'academic', 'creative'];
+      const sourceFields = Object.keys(cvTemplateFixture.structuredCv);
+      const readCvText = () => evaluate(`Object.fromEntries(${JSON.stringify(sourceFields)}.map(field =>
+        [field, document.getElementById('cv' + field[0].toUpperCase() + field.slice(1)).textContent]))`);
+      await cdp.send('Page.navigate', { url: base + '/index.html' });
+      await waitFor('document.readyState !== "loading"', 'Initial page establishes browser storage');
+      for (const [width, theme] of [[1440, 'light'], [375, 'dark']]) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 768 });
+        await evaluate(`localStorage.setItem('careerkraft-theme', ${JSON.stringify(theme)});
+          localStorage.setItem('careerkraft-cookie-consent', JSON.stringify({ version: 1, choice: 'rejected', savedAt: Date.now() }))`);
+        cdp.errors.length = 0;
+        await cdp.send('Page.navigate', { url: base + '/cv-preview.html?build=17&audit=cv-templates' });
+        await waitFor('document.querySelectorAll(\'input[name="cv-template"]\').length === 6 && !document.getElementById("cvDocument").hidden', 'Six template choices render with the final CV');
+        await evaluate('document.fonts.ready');
+        const originalText = await readCvText();
+        assert.equal(originalText.name, cvTemplateFixture.structuredCv.name);
+        assert.equal(await evaluate('document.documentElement.dataset.theme'), theme);
+        for (const templateId of templateIds) {
+          await evaluate(`document.getElementById('templateCategory').value = ${JSON.stringify(templateId)};
+            document.getElementById('templateCategory').dispatchEvent(new Event('change', { bubbles: true }))`);
+          assert.deepEqual(await evaluate(`[...document.querySelectorAll('.template-card')].filter(card => !card.hidden).map(card => card.dataset.category)`), [templateId], 'The category filter shows its matching template');
+          await clickControl(`.template-card[data-category="${templateId}"]`);
+          await waitFor(`document.getElementById('cvDocument').dataset.template === ${JSON.stringify(templateId)}`, 'The selected template applies to the real document');
+          assert.equal(await evaluate('document.querySelector(\'input[name="cv-template"]:checked\').value'), templateId);
+          assert.ok((await evaluate('document.getElementById("templateName").textContent')).toLowerCase().includes(templateId));
+          assert.deepEqual(await readCvText(), originalText, 'Changing a template keeps every source field intact');
+          assert.deepEqual(await evaluate('JSON.parse(sessionStorage.getItem("careerkraft-final-cv")).structuredCv'), cvTemplateFixture.structuredCv);
+          const order = await evaluate('[...document.querySelectorAll("#cvDocument .cv-section")].map(section => section.id)');
+          if (templateId === 'technical') {
+            assert.ok(order.indexOf('skillsSection') < order.indexOf('educationSection'));
+            assert.ok(order.indexOf('projectsSection') < order.indexOf('educationSection'));
+          } else if (templateId === 'academic') {
+            assert.ok(order.indexOf('educationSection') < order.indexOf('projectsSection'));
+            assert.ok(order.indexOf('certificationsSection') < order.indexOf('projectsSection'));
+          }
+          await measure(`CV ${templateId} template at ${width}px (${theme})`, width);
+          count++;
+          await cdp.send('Page.reload');
+          await waitFor(`document.getElementById('cvDocument')?.dataset.template === ${JSON.stringify(templateId)} && document.querySelector('input[name="cv-template"]:checked')?.value === ${JSON.stringify(templateId)}`, 'The selected template survives reload');
+          assert.deepEqual(await readCvText(), originalText, 'Reload keeps the same CV content');
+          await cdp.send('Emulation.setEmulatedMedia', { media: 'print' });
+          const printState = await evaluate(`({ chooser: getComputedStyle(document.getElementById('templateChooser')).display,
+            document: getComputedStyle(document.getElementById('cvDocument')).display,
+            name: document.getElementById('cvName').textContent,
+            text: document.getElementById('cvDocument').innerText,
+            template: document.getElementById('cvDocument').dataset.template })`);
+          assert.equal(printState.chooser, 'none', 'Printed CV excludes template controls');
+          assert.notEqual(printState.document, 'none', 'Printed CV remains visible');
+          assert.equal(printState.name, cvTemplateFixture.structuredCv.name);
+          assert.equal(printState.template, templateId);
+          for (const value of Object.values(cvTemplateFixture.structuredCv)) {
+            for (const text of Array.isArray(value) ? value : [value]) assert.ok(printState.text.includes(text), 'Print includes every supplied CV fact');
+          }
+          if (artifacts && width === 1440) {
+            const pdf = await cdp.send('Page.printToPDF', { preferCSSPageSize: true, printBackground: false, displayHeaderFooter: false });
+            const buffer = Buffer.from(pdf.data, 'base64');
+            fs.writeFileSync(path.join(artifacts, `cv-${templateId}.pdf`), buffer);
+            const { PDFParse } = require('pdf-parse');
+            const parser = new PDFParse({ data: Uint8Array.from(buffer), isEvalSupported: false });
+            try {
+              const result = await parser.getText();
+              const text = result.text.replace(/\s+/g, ' ');
+              for (const value of Object.values(cvTemplateFixture.structuredCv)) {
+                for (const source of Array.isArray(value) ? value : [value]) {
+                  assert.ok(text.includes(source.replace(/\s+/g, ' ')), `The ${templateId} PDF retains selectable source text: ${source}`);
+                }
+              }
+              const lower = text.toLowerCase();
+              if (templateId === 'technical') {
+                assert.ok(lower.indexOf('skills') < lower.indexOf('education'));
+                assert.ok(lower.indexOf('projects') < lower.indexOf('education'));
+              } else if (templateId === 'academic') {
+                assert.ok(lower.indexOf('education') < lower.indexOf('projects'));
+                assert.ok(lower.indexOf('certifications') < lower.indexOf('projects'));
+              }
+              process.stdout.write(`PASS ${templateId} PDF selectable text and section order\n`);
+            } finally { await parser.destroy(); }
+          }
+          await cdp.send('Emulation.setEmulatedMedia', { media: '' });
+          if (artifacts && templateId === 'creative') {
+            await evaluate(`document.getElementById('templateCategory').value = 'all';
+              document.getElementById('templateCategory').dispatchEvent(new Event('change', { bubbles: true }));
+              window.scrollTo({ top: 0, behavior: 'instant' })`);
+            const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+            fs.writeFileSync(path.join(artifacts, `cv-templates-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+            if (width === 375) {
+              await evaluate('document.getElementById("templateChooser").scrollIntoView({ behavior: "instant", block: "start" })');
+              const cards = await cdp.send('Page.captureScreenshot', { format: 'png' });
+              fs.writeFileSync(path.join(artifacts, 'cv-template-cards-375.png'), Buffer.from(cards.data, 'base64'));
+            }
+            await evaluate('document.getElementById("cvDocument").scrollIntoView({ behavior: "instant", block: "start" })');
+            const documentScreenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+            fs.writeFileSync(path.join(artifacts, `cv-document-${width}.png`), Buffer.from(documentScreenshot.data, 'base64'));
+          }
+        }
+      }
+      await evaluate(`document.getElementById('templateCategory').value = 'all';
+        document.getElementById('templateCategory').dispatchEvent(new Event('change', { bubbles: true }));
+        document.querySelector('input[name="cv-template"][value="classic"]').focus()`);
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 });
+      await waitFor('document.querySelector(\'input[name="cv-template"]:checked\')?.value === "modern" && document.getElementById("cvDocument").dataset.template === "modern"', 'Native radio arrow-key selection applies the next template');
+      assert.equal(await evaluate('document.activeElement.value'), 'modern');
+      process.stdout.write('PASS CV template native radio keyboard navigation\n');
+
+      const longCv = structuredClone(cvTemplateFixture);
+      longCv.structuredCv.profile = Array.from({ length: 12 }, (_, index) =>
+        `Research background paragraph ${index + 1}: Computing student exploring cybersecurity and software development through documented projects. Reviewed requirements, tested interfaces and recorded findings with classmates.`).join('\n\n');
+      longCv.structuredCv.projects = Array.from({ length: 24 }, (_, index) =>
+        `Project ${index + 1}: Built a Python and Flask dashboard to organise example research records. Documented the data model, implemented input validation and tested interface behaviour using sample data.`);
+      longCv.structuredCv.education = Array.from({ length: 6 }, (_, index) =>
+        `Education record ${index + 1}: Software Development coursework, Example College. Studied programming, databases, networking and documented development methods.`);
+      longCv.structuredCv.certifications.push('Final qualification record LONG_CV_FINAL_SENTINEL_Z91.');
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+      await evaluate(`sessionStorage.setItem('careerkraft-final-cv', ${JSON.stringify(JSON.stringify(longCv))});
+        sessionStorage.setItem('careerkraft-cv-build', ${JSON.stringify(JSON.stringify({ ...longCv, success: true, targetCareer: 'Software Developer', suggestions: [{ id: 101, status: 'accepted' }] }))})`);
+      await cdp.send('Page.reload');
+      await waitFor('document.getElementById("cvCertifications")?.textContent.includes("LONG_CV_FINAL_SENTINEL_Z91")', 'The complete long CV renders');
+      await evaluate('document.querySelector(\'.template-card[data-category="minimal"]\').scrollIntoView({ behavior: "instant", block: "center" })');
+      await clickControl('.template-card[data-category="minimal"]');
+      await waitFor('document.getElementById("cvDocument").dataset.template === "minimal"', 'The long CV uses the whitespace-heavy Minimal template');
+      await measure('Long Minimal CV at 1440px', 1440);
+      count++;
+      const longPdf = await cdp.send('Page.printToPDF', { preferCSSPageSize: true, printBackground: false, displayHeaderFooter: false });
+      const longBuffer = Buffer.from(longPdf.data, 'base64');
+      if (artifacts) fs.writeFileSync(path.join(artifacts, 'cv-minimal-long.pdf'), longBuffer);
+      const { PDFParse } = require('pdf-parse');
+      const longParser = new PDFParse({ data: Uint8Array.from(longBuffer), isEvalSupported: false });
+      try {
+        const result = await longParser.getText();
+        assert.ok(result.total > 1, 'Long CVs should continue onto additional pages');
+        const text = result.pages.map(page => page.text).join(' ').replace(/\s+/g, ' ');
+        assert.ok(text.includes('LONG_CV_FINAL_SENTINEL_Z91'), 'The final CV content is not truncated');
+        for (const value of Object.values(longCv.structuredCv)) {
+          for (const source of Array.isArray(value) ? value : [value]) {
+            assert.ok(text.includes(source.replace(/\s+/g, ' ')), `The long PDF retains all selectable source text: ${source.slice(0, 70)}`);
+          }
+        }
+        process.stdout.write(`PASS long Minimal CV: ${result.total} PDF pages with complete selectable source text\n`);
+      } finally { await longParser.destroy(); }
+      process.stdout.write(`Verified ${count} CV template layouts, six categories, source preservation, section order, reload persistence, keyboard navigation and complete multi-page PDF export.\n`);
     };
     const auditAccountCookies = async () => {
       await cdp.send('Page.navigate', { url: base + '/index.html' });
@@ -393,6 +559,10 @@ async function run() {
         }
       }
       process.stdout.write(`Verified ${count} loading layouts, original animated SVG delivery, nonblocking status, reduced motion, modal visibility and page lifecycle cleanup.\n`);
+      return;
+    }
+    if (cvTemplatesOnly) {
+      await auditCvTemplates();
       return;
     }
     if (cookiesOnly) {

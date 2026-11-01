@@ -8,6 +8,7 @@ const root = path.join(__dirname, '..');
 const FINAL_KEY = 'careerkraft-final-cv';
 const BUILD_KEY = 'careerkraft-cv-build';
 const SCAN_KEY = 'careerkraft-cv-scan-result';
+const TEMPLATE_KEY = 'careerkraft-cv-template';
 const fields = ['name', 'headline', 'contact', 'profile', 'education', 'experience', 'projects', 'skills', 'certifications'];
 const sections = ['profile', 'education', 'experience', 'projects', 'skills', 'certifications'];
 const finalCv = () => ({
@@ -42,11 +43,18 @@ function load(t, saved = finalCv(), options = {}) {
   if (saved !== null) storage.setItem(FINAL_KEY, typeof saved === 'string' ? saved : JSON.stringify(saved));
   if (metadata !== null) storage.setItem(BUILD_KEY, typeof metadata === 'string' ? metadata : JSON.stringify(metadata));
   storage.setItem(SCAN_KEY, JSON.stringify({ scanId: 4 }));
+  if (Object.hasOwn(options, 'template')) storage.setItem(TEMPLATE_KEY,
+    typeof options.template === 'string' ? options.template : JSON.stringify(options.template));
   const originalGet = window.Storage.prototype.getItem;
+  const originalSet = window.Storage.prototype.setItem;
   const originalRemove = window.Storage.prototype.removeItem;
   if (options.buildStorageError) window.Storage.prototype.getItem = function(key) {
     if (key === BUILD_KEY) throw new window.DOMException('Unavailable metadata', 'SecurityError');
     return originalGet.call(this, key);
+  };
+  if (options.templateWriteError) window.Storage.prototype.setItem = function(key, value) {
+    if (key === TEMPLATE_KEY) throw new window.DOMException('Preference storage full', 'QuotaExceededError');
+    return originalSet.call(this, key, value);
   };
   if (options.removeError) window.Storage.prototype.removeItem = function(key) {
     if (key === (options.removeError === true ? SCAN_KEY : options.removeError)) throw new window.DOMException('Cannot remove cache', 'SecurityError');
@@ -119,6 +127,108 @@ test('final CV preview renders all source sections and matching review totals wi
   assert.deepEqual(JSON.parse(h.storage.getItem(BUILD_KEY)), metadata);
   assert.equal(h.requests.length, 0);
   assert.equal(h.navigations.length, 0);
+});
+
+test('all six categories have accessible template choices, with Classic selected by default', t => {
+  const h = load(t);
+  const choices = [...h.document.querySelectorAll('input[name="cv-template"]')];
+  assert.deepEqual(choices.map(radio => radio.value), ['classic', 'modern', 'minimal', 'technical', 'academic', 'creative']);
+  assert.equal(choices.filter(radio => radio.checked).length, 1);
+  assert.equal(choices[0].checked, true);
+  assert.equal(h.element('cvDocument').dataset.template, 'classic');
+  for (const radio of choices) {
+    assert.equal(radio.disabled, false);
+    assert.ok(h.document.getElementById(radio.getAttribute('aria-labelledby')).textContent);
+    assert.ok(h.document.getElementById(radio.getAttribute('aria-describedby')).textContent);
+    assert.ok(radio.closest('label'));
+  }
+  assert.match(h.element('templateName').textContent, /Classic/);
+  assert.equal(h.element('templateStatus').getAttribute('role'), 'status');
+});
+
+test('switching all templates preserves every approved field and print uses the chosen layout', t => {
+  const h = load(t);
+  const before = [FINAL_KEY, BUILD_KEY, SCAN_KEY].map(key => h.storage.getItem(key));
+  const expected = Object.fromEntries(fields.map(field => [field, h.element(`cv${field[0].toUpperCase()}${field.slice(1)}`).textContent]));
+  // Start with a different choice so every iteration fires a native change.
+  for (const radio of [...h.document.querySelectorAll('input[name="cv-template"]')].reverse()) {
+    radio.click();
+    assert.equal(h.element('cvDocument').dataset.template, radio.value);
+    assert.equal(h.document.querySelectorAll('input[name="cv-template"]:checked').length, 1);
+    assert.deepEqual(JSON.parse(h.storage.getItem(TEMPLATE_KEY)), { buildId: 17, templateId: radio.value });
+    for (const field of fields) {
+      assert.equal(h.element(`cv${field[0].toUpperCase()}${field.slice(1)}`).textContent, expected[field]);
+    }
+    h.element('downloadButton').click();
+    assert.equal(h.element('cvDocument').dataset.template, radio.value, 'Printing must not reset the selected template');
+    assert.deepEqual([FINAL_KEY, BUILD_KEY, SCAN_KEY].map(key => h.storage.getItem(key)), before);
+  }
+  assert.equal(h.printCalls(), 6);
+  assert.equal(h.requests.length, 0);
+});
+
+test('Technical and Academic change actual document reading order while retaining all sections', t => {
+  const h = load(t);
+  const order = () => [...h.element('cvDocument').querySelectorAll(':scope > .cv-section')].map(section => section.id);
+  h.document.querySelector('input[value="technical"]').click();
+  assert.deepEqual(order(), ['profileSection', 'skillsSection', 'projectsSection', 'experienceSection', 'educationSection', 'certificationsSection']);
+  h.document.querySelector('input[value="academic"]').click();
+  assert.deepEqual(order(), ['profileSection', 'educationSection', 'certificationsSection', 'projectsSection', 'experienceSection', 'skillsSection']);
+  h.document.querySelector('input[value="classic"]').click();
+  assert.deepEqual(order(), ['profileSection', 'experienceSection', 'educationSection', 'projectsSection', 'skillsSection', 'certificationsSection']);
+  assert.equal(h.element('cvDocument').firstElementChild.className, 'cv-header');
+});
+
+test('category filters narrow the gallery without silently changing the chosen template or CV', t => {
+  const h = load(t);
+  const before = h.element('cvDocument').textContent;
+  const filter = h.element('templateCategory');
+  filter.value = 'technical';
+  filter.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  const visible = [...h.element('templateGrid').children].filter(card => !card.hidden);
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0].dataset.category, 'technical');
+  assert.equal(h.element('cvDocument').dataset.template, 'classic');
+  assert.equal(h.element('cvDocument').textContent, before);
+  filter.value = 'all';
+  filter.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  assert.equal([...h.element('templateGrid').children].filter(card => !card.hidden).length, 6);
+});
+
+test('template preference restores only for its matching build and invalid values cannot become markup or CSS', t => {
+  const saved = load(t, finalCv(), { template: { buildId: 17, templateId: 'academic' } });
+  assert.equal(saved.element('cvDocument').dataset.template, 'academic');
+  saved.restore();
+  assert.equal(saved.element('cvDocument').dataset.template, 'academic');
+  for (const template of ['not JSON', null, {}, { buildId: 18, templateId: 'technical' },
+    { buildId: 17, templateId: '<img src=x onerror=alert(1)>' }]) {
+    const h = load(t, finalCv(), { template });
+    assert.equal(h.element('cvDocument').dataset.template, 'classic');
+    assert.equal(h.element('downloadButton').disabled, false);
+    assert.equal(h.element('templateGrid').querySelector('img,script,style'), null);
+  }
+});
+
+test('optional template storage failures leave the chosen style printable for the current visit', t => {
+  const h = load(t, finalCv(), { template: { buildId: 17, templateId: 'classic' }, templateWriteError: true });
+  h.document.querySelector('input[value="creative"]').click();
+  assert.equal(h.element('cvDocument').dataset.template, 'creative');
+  assert.match(h.element('templateStatus').textContent, /could not save/i);
+  h.element('downloadButton').click();
+  assert.equal(h.printCalls(), 1);
+  assert.equal(h.element('cvDocument').dataset.template, 'creative');
+  assert.equal(JSON.parse(h.storage.getItem(TEMPLATE_KEY)).templateId, 'classic');
+  assert.equal(h.navigations.length, 0);
+});
+
+test('template choices remain unavailable without valid CV data and a new scan clears their preference', t => {
+  const missing = load(t, null);
+  assert.equal(missing.element('templateCategory').disabled, true);
+  assert.ok([...missing.document.querySelectorAll('input[name="cv-template"]')].every(radio => radio.disabled));
+  const h = load(t, finalCv(), { template: { buildId: 17, templateId: 'modern' } });
+  h.element('scanAnotherButton').click();
+  assert.equal(h.storage.getItem(TEMPLATE_KEY), null);
+  assert.equal(h.storage.getItem(FINAL_KEY), null);
 });
 
 test('preview renders simple structured entries and numeric source values without coercing nested objects', t => {

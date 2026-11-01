@@ -81,3 +81,52 @@ Run the focused regression checks with:
 ```sh
 node --test tests/cv-parser.test.js tests/cv-suggestions.test.js tests/cv-builder.test.js tests/cv-build-api.test.js tests/cv-results.test.js
 ```
+
+## Templates after review
+
+After reviewing improvements, **Choose a template** opens the final CV preview
+with six template categories. Filter the gallery, select a card, and use
+**Save as PDF** (choose that destination in the browser's print dialog).
+
+| Category | Presentation and emphasis |
+| --- | --- |
+| Classic | Traditional serif type, clean rules, conventional experience-led order |
+| Modern | Strong sans-serif headings and an understated accent for students and graduates |
+| Minimal | Generous whitespace and restrained typography |
+| Technical | Skills and Projects ahead of Experience and Education |
+| Academic | Education and Certifications ahead of Projects and Experience |
+| Creative | Expressive headings and a restrained accent in a professional layout |
+
+All templates use one text column, standard section headings, and real contact
+text in the document body. PDF export preserves selectable text. There are no
+photos, skill charts, document tables, or layout sidebars in the exported CV.
+These choices follow parsing guidance from
+[Greenhouse](https://support.greenhouse.io/hc/en-us/articles/200989175-Unsuccessful-resume-parse)
+and [Lever](https://help.lever.co/s/article/Understanding-Resume-Parsing); no
+format can guarantee identical results across every ATS.
+
+Template changes reorder actual document sections for screen readers and PDF
+extraction. They preserve the approved CV text and hide empty sections. The
+selected template is saved separately in `careerkraft-cv-template`, tied to its
+build ID, and survives refresh and a return to the same review. If optional
+preference storage fails, the chosen layout remains usable and printable for
+the current visit. Starting another scan from the preview clears the template
+preference along with the other CV workflow data.
+
+Run template regressions with:
+
+```sh
+node --test tests/cv-preview.test.js tests/cv-builder-ui.test.js tests/auth-security.test.js
+```
+
+For Chrome/Edge layout, interaction, and selectable-PDF checks on Windows:
+
+```powershell
+$env:BROWSER_AUDIT_SCOPE = 'cv-templates'
+$env:BROWSER_ARTIFACTS = "$env:TEMP/careerkraft-cv-templates-audit"
+npm.cmd run test:browser
+```
+
+The browser audit uses fake CV data and an isolated in-memory server. It checks
+desktop/light and mobile/dark layouts; with an artifact directory it also
+extracts text from a PDF for every template and checks section order.

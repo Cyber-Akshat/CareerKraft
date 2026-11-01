@@ -20,6 +20,7 @@ const RATE_LIMIT_RESPONSE = Object.freeze({
 });
 const PUBLIC_HTML_FILES = ['index.html', 'terms.html', 'privacy.html', 'auth.html', 'verify-email.html',
   'onboarding.html', 'career.html', 'dashboard.html', 'activity.html',
+  'cv-scanner.html', 'cv-results.html', 'cv-builder.html', 'cv-preview.html',
   'reset-password.html', 'settings.html', 'signup.html', '404.html'];
 
 function collectInlineScriptHashes(filenames = PUBLIC_HTML_FILES) {

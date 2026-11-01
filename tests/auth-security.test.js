@@ -245,7 +245,9 @@ test('security headers allow existing inline theme scripts while excluding exter
   assert.ok(!scriptPolicy.includes('unsafe-inline'));
   assert.ok(!scriptPolicy.includes('unsafe-eval'));
   assert.ok(!scriptPolicy.includes('https:'));
-  for (const filename of ['index.html', 'terms.html', 'auth.html', 'onboarding.html', 'career.html', 'dashboard.html', 'activity.html', 'settings.html', 'verify-email.html', 'reset-password.html', 'signup.html', '404.html']) {
+  for (const filename of ['index.html', 'terms.html', 'auth.html', 'onboarding.html', 'career.html', 'dashboard.html', 'activity.html',
+    'cv-scanner.html', 'cv-results.html', 'cv-builder.html', 'cv-preview.html',
+    'settings.html', 'verify-email.html', 'reset-password.html', 'signup.html', '404.html']) {
     const dom = new JSDOM(readFileSync(path.join(__dirname, '..', filename), 'utf8'));
     for (const script of dom.window.document.querySelectorAll('script:not([src])')) {
       if (!script.textContent.trim()) continue;
